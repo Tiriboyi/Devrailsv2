@@ -1,0 +1,30 @@
+name: devrailsv2
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  gate:
+    name: devrailsv2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed to verify who approved an RFC
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: RFC, spec, tests and docs gate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .rails/tool/bin/devrailsv2.js check --ci
+
+@@testSteps@@

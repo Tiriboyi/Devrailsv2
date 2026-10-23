@@ -1,0 +1,90 @@
+name: UI / frontend change
+description: Something on screen looks or behaves wrong, or a screen should change.
+title: "[UI]: "
+labels: ["frontend"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This ticket is read by people **and by AI coding agents**, which look at your screenshots.
+        **Screenshot tips:** capture the whole relevant area (not the whole monitor), mark the problem with an arrow or box,
+        add the expected version next to it if you can, and remove personal data. Mention the window width or device.
+  - type: input
+    id: page
+    attributes:
+      label: Page or component
+      description: Route, page name or component.
+      placeholder: /invoices/:id → "Invoice lines" table
+    validations:
+      required: true
+  - type: dropdown
+    id: change_type
+    attributes:
+      label: Type of change
+      options:
+        - Bug in existing UI
+        - Change to existing UI
+        - New UI
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current state
+      description: What it looks like or does now. **Drag a screenshot in here** and describe what is wrong in words too.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result / design
+      description: What it should look like or do. Add a mockup, an annotated screenshot or a Figma link.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: For bugs. How to get to the state in the screenshot.
+  - type: dropdown
+    id: viewports
+    attributes:
+      label: Viewports / browsers
+      multiple: true
+      options:
+        - Desktop (≥ 1280 px)
+        - Tablet (768–1279 px)
+        - Mobile (< 768 px)
+        - Chrome / Edge
+        - Firefox
+        - Safari (macOS)
+        - Safari (iOS)
+        - Chrome (Android)
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable results, one per line. Be specific about layout, states (empty, loading, error) and interaction.
+      placeholder: |
+        - Given a mobile viewport (375 px), when I open an invoice, then the lines table scrolls horizontally and the total stays visible.
+        - Given no invoice lines, when I open the invoice, then I see "No lines yet" instead of an empty table.
+    validations:
+      required: true
+  - type: textarea
+    id: accessibility
+    attributes:
+      label: Accessibility
+      placeholder: Keyboard reachable, visible focus, contrast ≥ 4.5:1, screen-reader label on the export button.
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data check
+      options:
+        - label: Screenshots contain no secrets, tokens or personal data.
+          required: true

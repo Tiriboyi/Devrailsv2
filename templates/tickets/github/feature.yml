@@ -1,0 +1,55 @@
+name: Feature request
+description: New behaviour or a change to existing behaviour.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This ticket is read by people **and by AI coding agents**. Describe the outcome, not the implementation.
+        Acceptance criteria are the most important part: each one becomes a test.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve, and why now?
+    validations:
+      required: true
+  - type: textarea
+    id: story
+    attributes:
+      label: User story
+      placeholder: As a <role>, I want <capability>, so that <benefit>.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: One observable result per line, ideally Given / When / Then. Include error cases and who may do what.
+      placeholder: |
+        - Given I am an Accountant, when I export invoices for March, then I get a CSV with one row per invoice line.
+        - Given I am a Viewer, when I try to export, then the button is hidden and the API returns 403.
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      placeholder: PDF export; scheduling exports.
+  - type: textarea
+    id: design
+    attributes:
+      label: Design, examples or screenshots
+      description: Drag images in, or link to Figma / an example.
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and open questions
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: [Must have, Should have, Could have]
+    validations:
+      required: true

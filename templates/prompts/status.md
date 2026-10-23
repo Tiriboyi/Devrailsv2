@@ -1,0 +1,1 @@
+Run `@@cli@@ status`, read `docs/STATUS.md` and the active RFC, and tell me in a few lines: where the project is, what is in flight, what is waiting for my approval, and the next step. Don't change anything.

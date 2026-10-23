@@ -1,0 +1,31 @@
+{
+  "name": "devrailsv2",
+  "version": "1.0.0",
+  "description": "Spec-driven, test-first guardrails for AI coding agents (Claude Code, GitHub Copilot). RFC-gated changes, enforced by hooks and CI.",
+  "type": "module",
+  "bin": {
+    "devrailsv2": "bin/devrailsv2.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "claude-code",
+    "copilot",
+    "spec-driven",
+    "tdd",
+    "guardrails"
+  ],
+  "license": "MIT"
+}

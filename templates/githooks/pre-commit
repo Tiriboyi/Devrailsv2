@@ -1,0 +1,6 @@
+#!/bin/sh
+# devrailsv2: staged changes need an approved, active RFC.
+node .rails/tool/bin/devrailsv2.js check --staged || {
+  echo "Commit blocked by devrailsv2. See AGENTS.md for the workflow." >&2
+  exit 1
+}

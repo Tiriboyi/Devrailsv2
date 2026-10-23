@@ -1,0 +1,83 @@
+name: Bug report
+description: Something works differently than it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This ticket is read by people **and by AI coding agents**. Be concrete: exact steps, exact values, exact messages.
+        Anything you leave out, the agent will ask about instead of guessing. Don't paste secrets, tokens or personal data (also not in screenshots).
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences. What is wrong and who is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a known starting point. Include the page or endpoint, the user role and the data used.
+      placeholder: |
+        1. Log in as a user with role "Accountant"
+        2. Open /invoices/123
+        3. Click "Export CSV"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: The CSV contains all 12 invoice lines and the total is € 1.234,56.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happens now. Paste the exact error message. Drag screenshots or a short screen recording in here.
+      placeholder: The download starts but the file is empty. Toast says "Export failed (500)".
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, request ids or stack traces
+      render: text
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Where does it happen?
+      placeholder: |
+        Environment: production / test / local
+        App version or commit:
+        Browser and OS (for UI issues):
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Blocker (no workaround, many users)
+        - Major (workaround exists)
+        - Minor
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How do we know it is fixed? One observable result per line.
+      placeholder: |
+        - Given an invoice with 12 lines, when I export it, then the CSV has 12 rows and the correct total.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data check
+      options:
+        - label: Text and screenshots contain no secrets, tokens or personal data.
+          required: true

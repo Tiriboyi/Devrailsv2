@@ -1,0 +1,21 @@
+# devrailsv2 gate for Azure Repos pull requests.
+# Add this pipeline as a required build validation policy on your main branch.
+# Approval in Azure Repos is checked via the RFC file (status: approved, set in a commit by an approver, content unchanged since).
+trigger: none
+pr:
+  branches:
+    include: ['*']
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
+  - script: node .rails/tool/bin/devrailsv2.js check --ci
+    displayName: devrailsv2 gate
+  - script: @@testCommand@@
+    displayName: Tests
