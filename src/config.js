@@ -19,6 +19,10 @@ export const PROTECTED_PATHS = [
   '.vscode/mcp.json',
   '.serena/project.yml',
   '.serena/project.local.yml',
+  '.claude/agents/rails-*.md',
+  '.claude/commands/rails-*.md',
+  '.github/agents/rails-*.agent.md',
+  '.github/prompts/rails-*.prompt.md',
 ];
 
 export const STACKS = {
@@ -41,6 +45,33 @@ export const STACKS = {
     testCommand: 'make test',
   },
 };
+
+/** Files whose changes never need tests (styles, images, icons, translations). Overridable via paths.cosmetic. */
+export const DEFAULT_COSMETIC = [
+  '**/*.css', '**/*.scss', '**/*.sass', '**/*.less', '**/*.styl',
+  '**/*.svg', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.webp', '**/*.ico', '**/*.avif',
+  '**/*.woff', '**/*.woff2', '**/*.ttf',
+  '**/locales/**', '**/i18n/**', '**/translations/**', '**/*.resx',
+];
+export const cosmeticGlobs = (cfg) => (Array.isArray(cfg?.paths?.cosmetic) ? cfg.paths.cosmetic : DEFAULT_COSMETIC);
+
+/** Limits that keep fast-track for small changes only. Overridable via fastTrack in .rails/config.json. */
+export const DEFAULT_FAST_TRACK = {
+  maxFiles: 10,
+  maxLines: 200, // added + removed lines in non-cosmetic, non-doc files (lockfiles excluded)
+  onePerPullRequest: true,
+  maxShare: 0.5, // audit warns when more than half of the RFCs are fast-track
+  forbidden: [
+    // matching is case-insensitive
+    '**/auth/**', '**/*auth*.*', '**/identity/**', '**/security/**', '**/*security*.*', '**/permission*/**',
+    '**/payment*/**', '**/*payment*.*', '**/billing/**',
+    '**/migrations/**', '**/Migrations/**', '**/*.sql',
+    '.github/workflows/**', 'azure-pipelines*.yml', '**/*.tf', '**/*.bicep', '**/Dockerfile', '**/docker-compose*.yml', 'infra/**', 'deploy/**',
+    '.rails/**', '.githooks/**', '.claude/**', '.mcp.json', '.serena/**',
+  ],
+};
+export const fastTrackRules = (cfg) => ({ ...DEFAULT_FAST_TRACK, ...(cfg?.fastTrack || {}) });
+export const LOCKFILES = ['**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/packages.lock.json', '**/*.lock'];
 
 export function normStack(s) {
   const v = String(s || '').toLowerCase().trim();

@@ -2,7 +2,7 @@ import { readJson, closePrompts, PKG_ROOT, c } from './util.js';
 import path from 'node:path';
 
 const BOOL = new Set([
-  'yes', 'force', 'dry-run', 'fast-track', 'no-serena', 'keep-assets', 'no-images', 'azure', 'run-tests', 'staged', 'ci', 'json', 'branch', 'help', 'version', 'no-git', 'no-branch', 'quiet',
+  'yes', 'force', 'dry-run', 'fast-track', 'approve', 'no-models', 'no-serena', 'keep-assets', 'no-images', 'azure', 'run-tests', 'staged', 'ci', 'json', 'branch', 'help', 'version', 'no-git', 'no-branch', 'quiet',
 ]);
 
 export function parseArgs(argv) {
@@ -34,6 +34,7 @@ ${c.bold('Setup')}
   auth [test]               Choose/change how tickets are fetched (GitHub / Azure DevOps)
   update                    Refresh tooling, hooks, prompts and managed instruction blocks
   doctor                    Check that hooks, tooling, auth and Serena are in place
+  models [set|on|off|reset] Which model runs each step (Claude Code commands/subagents, Copilot prompts)
   serena enable|disable     Connect Serena (MCP code intelligence) for Claude Code and Copilot
   serena status             Show the Serena setup and how its tools are gated
 
@@ -43,6 +44,9 @@ ${c.bold('Workflow')}
   ticket lint <id>          Is the ticket complete enough for an agent? (exit 1 if not)
   ticket templates --azure  Create Azure DevOps work item templates   [--team "<team>"] [--dry-run]
   rfc new "<title>"         Draft a Request for Change   [--ticket id] [--affects globs] [--fast-track]
+  quick "<title>" --affects <files>
+                            Fast-track RFC for a small/cosmetic change, pre-filled
+                            [--request --outcome --verify "…"] [--approve: human only, approves + starts]
   rfc list | show <id>      List or print RFCs (ids: RFC-2026-001, 2026-001 or 1)
   rfc lint [id]             Check an RFC against the required format
   rfc start <id>            Make an approved RFC active and switch to its branch
@@ -53,6 +57,7 @@ ${c.bold('Workflow')}
   adr new "<title>"         Record an architecture decision
   done [--rfc id]           Write the change record, CHANGELOG and STATUS   [--run-tests]
   status                    Where are we: active RFC, AC coverage, next step
+  audit [--days 90]         How fast-track is used: share, sizes, protected areas, split work
 
 ${c.bold('Gate')}
   check                     Full check of current work against the base branch
@@ -81,8 +86,11 @@ export async function main(argv) {
     update: () => import('./commands/update.js'),
     doctor: () => import('./commands/doctor.js'),
     serena: () => import('./commands/serena.js'),
+    models: () => import('./commands/models.js'),
+    audit: () => import('./commands/audit.js'),
     ticket: () => import('./commands/ticket.js'),
     rfc: () => import('./commands/rfc.js'),
+    quick: () => import('./commands/quick.js'),
     spec: () => import('./commands/spec.js'),
     adr: () => import('./commands/adr.js'),
     done: () => import('./commands/done.js'),

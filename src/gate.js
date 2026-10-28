@@ -1,8 +1,9 @@
 // The rules engine shared by `check`, the git hooks, CI and the Claude hook.
 import { git, gitLines, matchAny, matchAffects, toPosix, exists, readJson, isGitRepo } from './util.js';
-import { FREE_PATHS } from './config.js';
+import { FREE_PATHS, cosmeticGlobs } from './config.js';
 import { getRfc, getSpec, getChangeRecord, acCoverage, lintRfc, normalizeRfc, isSetupKey, pad3 } from './docs.js';
 import { splitFrontmatter } from './frontmatter.js';
+import { fastTrackRfcProblems, fastTrackChangeProblems } from './fasttrack.js';
 import { ghHeaders, githubApi } from './commands/auth.js';
 
 export function classify(cfg, file) {
@@ -131,7 +132,7 @@ export async function labelApproval(cfg, ctx) {
 /**
  * phase: 'commit' (pre-commit) | 'local' (devrailsv2 check) | 'ci' (pull request gate)
  */
-export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {} }) {
+export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {}, stats = null }) {
   const errors = [];
   const warnings = [];
   const notes = [];
@@ -159,6 +160,8 @@ export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {} }) {
 
   const require = cfg.approval.require || 'either';
   const codeChanged = groups.src.length + groups.legacy.length > 0;
+  // Styles, images and translations never need tests; everything else in src/ does.
+  const logicChanged = [...groups.src, ...groups.legacy].filter((f) => !matchAny(f, cosmeticGlobs(cfg)));
   let allAffects = [];
   let anyExemption = null;
   let bootstrapOnly = true;
@@ -216,7 +219,9 @@ export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {} }) {
       if (!rfc.exemption) {
         const cov = acCoverage(root, cfg, key);
         const sink = rfc.type === 'fast-track' ? warn : soft;
-        if (!cov.rows.length) sink(`RFC-${key} has no numbered acceptance criteria ("- [ ] AC-1: …").`);
+        if (!cov.rows.length) {
+          if (rfc.type !== 'fast-track') sink(`RFC-${key} has no numbered acceptance criteria ("- [ ] AC-1: …").`);
+        }
         else if (cov.missing.length) sink(`Acceptance criteria without a test referencing them: ${cov.missing.map((a) => `RFC-${key}:${a}`).join(', ')}.`);
         else notes.push(`All ${cov.rows.length} acceptance criteria of RFC-${key} have tests.`);
         if (cov.extra.length) warn(`SPEC-${key} uses ${cov.extra.join(', ')}, which are not in the approved RFC.`);
@@ -229,12 +234,20 @@ export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {} }) {
     }
   }
 
+  // --- fast-track limits: small, scoped, away from sensitive areas ---
+  const realRfcs = rfcIds.filter((k) => !isSetupKey(k)).map((k) => getRfc(root, k)).filter(Boolean);
+  const fastKeys = realRfcs.filter((r) => r.type === 'fast-track').map((r) => r.key);
+  if (fastKeys.length) {
+    for (const r of realRfcs.filter((x) => x.type === 'fast-track')) for (const p of fastTrackRfcProblems(root, cfg, r)) errors.push(`RFC-${r.key}: ${p}`);
+    if (fastKeys.length === realRfcs.length) errors.push(...fastTrackChangeProblems(cfg, { files: gated, stats, fastKeys, phase }));
+  }
+
   // --- tests accompany code ---
   if (codeChanged && !bootstrapOnly) {
-    if (anyExemption) warn(`Test exemption in use: "${anyExemption}".`);
+    if (!logicChanged.length) notes.push('Only cosmetic files changed (styles, images, translations): no tests required.');
+    else if (anyExemption) warn(`Test exemption in use: "${anyExemption}".`);
     else if (!groups.test.length) {
-      const changed = [...groups.src, ...groups.legacy];
-      const msg = `Source changed (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? '…' : ''}) but no tests changed. Add tests, or add test_exemption to the RFC frontmatter for a human to approve.`;
+      const msg = `Source changed (${logicChanged.slice(0, 5).join(', ')}${logicChanged.length > 5 ? '…' : ''}) but no tests changed. Add tests, or add test_exemption to the RFC frontmatter for a human to approve.`;
       if (phase === 'commit') warn(msg);
       else soft(msg);
     }
@@ -245,7 +258,12 @@ export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {} }) {
     const scoped = [...groups.src, ...groups.legacy, ...groups.other];
     if (allAffects.length) {
       const outside = scoped.filter((x) => !matchAffects(x, allAffects));
-      if (outside.length) (strict ? errors : warnings).push(`Changed outside the RFC's affected_areas: ${outside.join(', ')}.`);
+      const fastTrack = rfcIds.some((k) => getRfc(root, k)?.type === 'fast-track');
+      if (outside.length) {
+        (strict || fastTrack ? errors : warnings).push(
+          `Changed outside the RFC's affected_areas: ${outside.join(', ')}.${fastTrack ? ' Fast-track RFCs may only touch the files they list; widen it (status: draft, re-approve) or use a regular RFC.' : ''}`,
+        );
+      }
     }
   }
 

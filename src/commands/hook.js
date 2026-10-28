@@ -19,6 +19,7 @@ export function bashRules(cfg) {
   const label = cfg.approval?.prLabel || 'rfc-approved';
   return [
     { re: /\brfc\s+(approve|reject)\b/, msg: 'Approving or rejecting an RFC is a human action. Ask the user to do it.' },
+    { re: /\bquick\b[^|;&\n]*--approve\b/, msg: 'Approving a fast-track RFC is a human action. Run `quick` without --approve and ask the user to approve it.' },
     { re: new RegExp(`\\b${label.replace(/[-]/g, '\\-')}\\b`), msg: `Adding or removing the "${label}" label is a human action.` },
     { re: /--no-verify\b|\bgit\s+commit\b[^|;&\n]*\s-n\b/, msg: 'Skipping git hooks (--no-verify) is not allowed.' },
     { re: /core\.hooksPath/, msg: 'Changing core.hooksPath is not allowed.' },
@@ -90,6 +91,9 @@ function gatePath(root, cfg, rel) {
   const { rfc } = r;
   if (isSetupKey(rfc.key) && !matchAffects(rel, rfc.affects)) {
     return { block: `RFC-${rfc.key} only covers the devrailsv2 setup. Draft a new RFC for this change.` };
+  }
+  if (rfc.type === 'fast-track' && !matchAffects(rel, rfc.affects) && !matchAny(rel, cfg.paths.tests) && !rel.startsWith('docs/') && rel !== 'CHANGELOG.md') {
+    return { block: `${rel} is not listed in fast-track RFC-${rfc.key} (${rfc.affects.join(', ')}). Fast-track changes stay within the listed files; anything more needs a regular RFC.` };
   }
   if (cfg.strictness === 'strict' && rfc.affects.length && !matchAffects(rel, rfc.affects) && !matchAny(rel, cfg.paths.tests) && !rel.startsWith('docs/') && rel !== 'CHANGELOG.md') {
     return { block: `${rel} is outside RFC-${rfc.key}'s affected_areas (${rfc.affects.join(', ')}). Set the RFC back to draft, update it and ask for re-approval.` };

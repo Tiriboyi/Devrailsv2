@@ -79,6 +79,64 @@ docs/migration/                   (migration mode) evidence map + parity matrix
 CHANGELOG.md
 ```
 
+## Models per step (token budget)
+Each step runs on the model that fits it, and bulky work goes to small helper subagents, so the main conversation stays short.
+
+| Step | Default (Claude Code) | Why |
+|---|---|---|
+| `/rails-ticket`, `/rails-rfc`, `/rails-spec` | opus | mistakes here are the most expensive |
+| `/rails-implement`, `/rails-done` | sonnet | most of the edits; the RFC already fixes what to do |
+| `/rails-status` | haiku | summarising |
+| `rails-explorer` subagent | haiku | code search and impact; returns a short report with file:line evidence (read-only) |
+| `rails-test-runner` subagent | haiku | runs tests / `devrailsv2 check`; returns failures only (never edits) |
+| `rails-reviewer` subagent | opus | independent read-only review against the RFC before the PR |
+
+```bash
+devrailsv2 models                         # show the routing
+devrailsv2 models set implement opus      # haiku | sonnet | opus | inherit
+devrailsv2 models set explorer --copilot "Fast model (copilot), Fallback (copilot)"
+devrailsv2 models off | on | reset
+```
+- **Claude Code:** `model:` in `.claude/commands/rails-*.md` and the subagents in `.claude/agents/`.
+- **Copilot (VS Code):** `model:` in `.github/prompts/rails-*.prompt.md` and custom agents in `.github/agents/rails-*.agent.md`. Copilot model names depend on your plan, so they start empty (the model picker decides) until you set them, using the names exactly as the picker shows them.
+- AGENTS.md tells the agent to delegate searching and test runs to the subagents. The devrailsv2 hooks apply to subagents too, and agents cannot edit the command or agent files.
+- Switching models mid-conversation loses the prompt cache. Subagents avoid this because each starts with a small, fresh context. A fresh session per RFC keeps costs down too.
+
+## Small changes: `quick`
+A cosmetic fix shouldn't need a full RFC, but it should still be approved and recorded.
+```bash
+devrailsv2 quick "Fix save button padding on mobile" --affects src/ui/Button.module.css \
+  --request "Save button touches the screen edge on mobile" \
+  --outcome "12 px padding on viewports < 768 px" \
+  --verify "Checked at 375 px in Chrome and Safari; existing tests pass" --approve
+# make the change, then
+devrailsv2 done --run-tests && git push   # open the PR
+```
+- Writes a **fast-track RFC in the full RFC format**. The sections that don't apply are pre-filled, so only Request, Desired Outcome and Verification Plan need writing; `rfc lint` checks only those three for fast-track.
+- `--approve` (a human, in a terminal) approves it, creates the `rfc/<id>-…` branch and commits the approval under your name in one step. Agents can run `quick` without `--approve`. The hook blocks the flag for them, and the RFC then waits for `rfc approve`.
+- **No tests for cosmetic files.** Changes that only touch `paths.cosmetic` (styles, images, icons, fonts, translations; editable in `.rails/config.json`) pass the gate without tests. Touch anything else and tests are required again, so logic can't slip in as "cosmetic".
+- No spec; acceptance criteria are optional; `done` writes a short change record.
+- Strict mode disables fast-track.
+- Batching: several small fixes can share one fast-track RFC if every file is in `affected_areas`.
+### Keeping fast-track honest
+Fast-track is only useful if it stays small, so the limits are enforced, not just suggested. They live in `.rails/config.json` → `fastTrack`.
+
+| Guard | Where it's enforced |
+|---|---|
+| A **human approves** every fast-track RFC; agents can't (`--approve` and `rfc approve` are blocked for them) | Claude hook, interactive check, CI approver check |
+| `affected_areas` must list **exact files**: no `**`, no whole folders (a `*` inside one folder is fine), at most `maxFiles` (10) | `quick`, `rfc lint`, `rfc approve`, gate |
+| **Protected areas** never go fast-track: auth/identity/security/permissions, payments/billing, migrations and SQL, CI workflows, infrastructure (Terraform, Bicep, Docker), devrailsv2's own tooling (`fastTrack.forbidden`) | `quick`, `rfc approve`, Claude hook, pre-commit, CI |
+| Edits stay **inside the listed files** (tests and docs excepted), in every strictness mode | Claude hook (blocks the edit), pre-commit, CI |
+| **Size cap**: `maxLines` (200) added + removed lines, not counting styles, assets, docs and lockfiles | pre-commit (per commit), `check`, CI (whole PR) |
+| **Logic needs tests**: only cosmetic files (`paths.cosmetic`) may change without them | gate |
+| **One fast-track RFC per pull request** (`onePerPullRequest`), so a big change can't be stacked from small ones | CI |
+| The approved RFC is **frozen**, so scope can't grow afterwards | Claude hook, CI (compares with the approval commit) |
+| **Visibility**: `devrailsv2 audit [--days 90]` shows the fast-track share, the size of each fast-track RFC, protected files touched, and *possible split work* (several fast-track RFCs on the same files within two weeks) | on demand / in a scheduled job |
+
+If a change hits a limit, the answer is a regular RFC, not a bigger limit. Raise limits only per repository, with an RFC of its own.
+
+- Approving via the PR label alone doesn't help locally: the hooks need an approved RFC file before any edit. `--approve` is the quick local route.
+
 ## The RFC format
 `docs/rfc/RFC-<yyyy>-<nnn>-<slug>.md`, numbered per year (`RFC-2026-001`, `RFC-2026-002`…). Any command accepts `RFC-2026-001`, `2026-001` or just `1`.
 

@@ -6,6 +6,7 @@ import {
 } from './util.js';
 import { STACKS } from './config.js';
 import { yamlScalar } from './frontmatter.js';
+import { claudeAgents, copilotAgents, commandFrontmatter, promptFrontmatter, modelsFor } from './models.js';
 import { serenaClaudeHooks, mergeMcpJson, mergeVscodeMcp, ensureProjectYml } from './serena.js';
 
 const PROMPTS = [
@@ -33,6 +34,25 @@ function ciTestSteps(cfg) {
   return steps.join('\n');
 }
 
+function modelTable(cfg) {
+  const { claude, copilot, enabled } = modelsFor(cfg);
+  const row = (task, what) => `| ${what} | ${claude[task]} | ${copilot[task].join(' → ') || 'picker'} |`;
+  return [
+    enabled ? '' : '_Model routing is off (`models.enabled: false`): everything uses the session model._\n',
+    '| Step | Claude Code | Copilot |',
+    '|---|---|---|',
+    row('ticket', '`/rails-ticket` analysis'),
+    row('rfc', '`/rails-rfc`'),
+    row('spec', '`/rails-spec`'),
+    row('implement', '`/rails-implement`'),
+    row('done', '`/rails-done`'),
+    row('status', '`/rails-status`'),
+    row('explorer', 'subagent `rails-explorer`'),
+    row('testRunner', 'subagent `rails-test-runner`'),
+    row('reviewer', 'subagent `rails-reviewer`'),
+  ].filter(Boolean).join('\n');
+}
+
 export function buildVars(cfg) {
   const m = cfg.migration;
   return {
@@ -51,6 +71,7 @@ export function buildVars(cfg) {
     legacyPath: m?.legacyPath ?? '',
     testSteps: ciTestSteps(cfg),
     stackRules: template(`stack/${exists(path.join(TEMPLATES, 'stack', `${cfg.stack}.md`)) ? cfg.stack : 'other'}.md`),
+    modelTable: modelTable(cfg),
     serenaRules: cfg.serena?.enabled ? render(read(path.join(TEMPLATES, 'stack', 'serena.md')), { cli: CLI }) : '',
     migrationRules: m ? render(read(path.join(TEMPLATES, 'stack', 'migration.md')), { from: m.from, to: m.to, legacyPath: m.legacyPath, cli: CLI }) : '',
   };
@@ -93,20 +114,16 @@ export function generate(root, cfg, { force = false, dryRun = false, initial = f
   put('CLAUDE.md', T('claude.md'), 'block');
   put('.github/copilot-instructions.md', T('github/copilot-instructions.md'), 'block');
 
-  // Prompts / slash commands (same source, two dialects)
+  // Prompts / slash commands (same source, two dialects), each with the model configured for its task
   for (const p of PROMPTS) {
     const body = render(read(path.join(TEMPLATES, 'prompts', `${p.name}.md`)), v);
-    put(
-      `.claude/commands/rails-${p.name}.md`,
-      `---\ndescription: ${p.description}\n${p.hint ? `argument-hint: ${p.hint}\n` : ''}---\n\n${body.replace(/@@ARGS@@/g, '$ARGUMENTS')}`,
-      'own',
-    );
-    put(
-      `.github/prompts/rails-${p.name}.prompt.md`,
-      `---\ndescription: ${p.description}\n---\n\n${body.replace(/@@ARGS@@/g, '${input:args}')}`,
-      'own',
-    );
+    put(`.claude/commands/rails-${p.name}.md`, commandFrontmatter(cfg, p.name, p) + body.replace(/@@ARGS@@/g, '$ARGUMENTS'), 'own');
+    put(`.github/prompts/rails-${p.name}.prompt.md`, promptFrontmatter(cfg, p.name, p) + body.replace(/@@ARGS@@/g, '${input:args}'), 'own');
   }
+
+  // Helper subagents: cheap models for searching and running tests, a strong one for review
+  for (const [name, text] of Object.entries(claudeAgents(cfg, CLI))) put(`.claude/agents/${name}.md`, text, 'own');
+  for (const [name, text] of Object.entries(copilotAgents(cfg, CLI))) put(`.github/agents/${name}.agent.md`, text, 'own');
 
   // Enforcement
   mergeClaudeSettings(root, actions, dryRun, cfg);

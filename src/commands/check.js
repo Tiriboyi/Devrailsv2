@@ -2,6 +2,7 @@ import path from 'node:path';
 import { findRoot, read, gitLines, git, toPosix, log, c } from '../util.js';
 import { loadConfig, getActiveRfcId } from '../config.js';
 import { evaluate, changedFiles, ciContext, detectBase, rfcIdsFrom, commitMessageProblem } from '../gate.js';
+import { lineStats } from '../fasttrack.js';
 
 function report(res, { quiet = false, title }) {
   if (!quiet) console.log(c.bold(title));
@@ -29,7 +30,7 @@ export default async function check({ flags }) {
   if (flags.staged) {
     const files = gitLines(['diff', '--cached', '--name-only'], root).map(toPosix);
     const active = getActiveRfcId(root);
-    const res = await evaluate(root, cfg, { files, rfcIds: active ? [active] : [], phase: 'commit' });
+    const res = await evaluate(root, cfg, { files, rfcIds: active ? [active] : [], phase: 'commit', stats: lineStats(root, { staged: true }) });
     report(res, { quiet: true, title: 'devrailsv2 pre-commit' });
     return res.errors.length ? 1 : 0;
   }
@@ -43,7 +44,7 @@ export default async function check({ flags }) {
     const commits = mb ? gitLines(['log', '--format=%s', `${mb}..HEAD`], root) : [];
     const rfcIds = rfcIdsFrom(ctx.head, ctx.title, ...commits);
     console.log(c.dim(`base ${base} · ${files.length} file(s) · RFCs: ${rfcIds.map((i) => `RFC-${i}`).join(', ') || 'none'}`));
-    const res = await evaluate(root, cfg, { files, rfcIds, phase: 'ci', ctx });
+    const res = await evaluate(root, cfg, { files, rfcIds, phase: 'ci', ctx, stats: lineStats(root, { base }) });
     report(res, { title: 'devrailsv2 pull-request gate' });
     return res.errors.length ? 1 : 0;
   }
@@ -56,7 +57,7 @@ export default async function check({ flags }) {
   const commits = mb ? gitLines(['log', '--format=%s', `${mb}..HEAD`], root) : [];
   const rfcIds = [...new Set([...(active ? [active] : []), ...rfcIdsFrom(...commits)])];
   console.log(c.dim(`base ${base || '(none)'} · ${files.length} changed file(s) · RFCs: ${rfcIds.map((i) => `RFC-${i}`).join(', ') || 'none'}`));
-  const res = await evaluate(root, cfg, { files, rfcIds, phase: 'local' });
+  const res = await evaluate(root, cfg, { files, rfcIds, phase: 'local', stats: lineStats(root, { base, includeWorking: true }) });
   report(res, { title: 'devrailsv2 check' });
   return res.errors.length ? 1 : 0;
 }

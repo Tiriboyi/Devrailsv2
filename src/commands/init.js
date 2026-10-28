@@ -3,10 +3,11 @@ import path from 'node:path';
 import {
   exists, isInteractive, ask, select, confirm, git, isGitRepo, gitUser, log, c, CLI,
 } from '../util.js';
-import { STACKS, normStack, saveConfig, saveState, loadConfig } from '../config.js';
+import { STACKS, normStack, saveConfig, saveState, loadConfig, DEFAULT_COSMETIC, DEFAULT_FAST_TRACK } from '../config.js';
 import { configureTracker, describeTracker, testAuth } from './auth.js';
 import { generate, printActions } from '../scaffold.js';
 import { serenaInstalled } from '../serena.js';
+import { defaultModelsConfig } from '../models.js';
 
 function detectStack(root) {
   if (exists(path.join(root, 'package.json'))) return 'node';
@@ -104,7 +105,7 @@ export default async function init({ flags }) {
     );
   }
 
-  const paths = { src: [...STACKS[stack].src], tests: [...STACKS[stack].tests] };
+  const paths = { src: [...STACKS[stack].src], tests: [...STACKS[stack].tests], cosmetic: [...DEFAULT_COSMETIC] };
   if (migration) {
     paths.legacy = [`${migration.legacyPath}/**`];
     for (const t of STACKS[migration.from]?.tests ?? []) if (!paths.tests.includes(t)) paths.tests.push(t);
@@ -128,6 +129,8 @@ export default async function init({ flags }) {
     },
     setupRfc: `${new Date().getFullYear()}-000`,
     serena: { enabled: serena, hooks: true },
+    models: { ...defaultModelsConfig(), enabled: !flags['no-models'] },
+    fastTrack: { ...DEFAULT_FAST_TRACK, forbidden: [...DEFAULT_FAST_TRACK.forbidden] },
     created: new Date().toISOString().slice(0, 10),
   };
 

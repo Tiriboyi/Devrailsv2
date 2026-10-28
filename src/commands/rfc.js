@@ -5,12 +5,51 @@ import {
 import { loadConfig, loadState, saveState, getActiveRfcId } from '../config.js';
 import { listRfcs, getRfc, nextRfcKey, lintRfc, appendHistory, isSetupKey, resolveRfcKey, RFC_DIR } from '../docs.js';
 import { setFields, yamlScalar } from '../frontmatter.js';
+import { fastTrackRfcProblems } from '../fasttrack.js';
 
 const STATUS_COLOR = { approved: c.green, draft: c.yellow, rejected: c.red, superseded: c.dim };
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function printLint(rfc) {
+/** Approval is a human action: refuse when there is no terminal, inside Claude Code, or in CI. */
+export function assertHuman(action) {
+  if (!process.stdin.isTTY || process.env.CLAUDECODE || process.env.CI) {
+    throw new Error(`\`${action}\` is a human action and must be run in an interactive terminal.`);
+  }
+}
+
+export function warnIfNotApprover(root, cfg, what = 'approval') {
+  const u = gitUser(root);
+  const approvers = cfg.approval.approvers || [];
+  if (approvers.length && !approvers.some((a) => [u.email, u.name].map((x) => x?.toLowerCase()).includes(a.toLowerCase()))) {
+    log.warn(`Your git identity (${u.display}) is not in approval.approvers; CI will reject this ${what}.`);
+  }
+  return u.display || u.name || 'unknown';
+}
+
+export function approvedText(text, who, note = 'Approved') {
+  return appendHistory(setFields(text, { status: 'approved', approved_by: who, approved_on: today(), updated: today() }), today(), who, note);
+}
+
+/** Make an approved RFC active and switch to its branch. */
+export function startRfc(root, r, flags = {}) {
+  if (r.status !== 'approved') throw new Error(`RFC-${r.key} is "${r.status}". Only approved RFCs can be started.`);
+  saveState(root, { ...loadState(root), activeRfc: r.key });
+  log.ok(`Active RFC: RFC-${r.key} ${r.title}`);
+  if (isGitRepo(root) && !isSetupKey(r.key) && !flags['no-branch']) {
+    const branch = `rfc/${r.key}-${r.slug}`.slice(0, 80);
+    if (currentBranch(root) === branch) log.info(`Already on ${branch}`);
+    else {
+      const exists = git(['rev-parse', '--verify', '--quiet', branch], root).ok;
+      const res = git(exists ? ['checkout', branch] : ['checkout', '-b', branch], root);
+      if (res.ok) log.ok(`${exists ? 'Switched to' : 'Created'} branch ${branch}`);
+      else log.warn(`Could not switch branch (${res.stderr}). Commit or stash first, then: git checkout -b ${branch}`);
+    }
+  }
+}
+
+export function printLint(rfc, root, cfg) {
   const { errors, warnings } = lintRfc(rfc);
+  if (root && cfg) errors.push(...fastTrackRfcProblems(root, cfg, rfc));
   for (const e of errors) log.err(e);
   for (const w of warnings) log.warn(w);
   if (!errors.length && !warnings.length) log.ok(`${rfc.id} is complete.`);
@@ -81,41 +120,27 @@ export default async function rfc({ pos, flags }) {
 
   if (sub === 'lint') {
     console.log(c.bold(`${r.id}: ${r.title}`));
-    return printLint(r).errors.length ? 1 : 0;
+    return printLint(r, root, cfg).errors.length ? 1 : 0;
   }
 
   if (sub === 'start') {
-    if (r.status !== 'approved') throw new Error(`RFC-${r.key} is "${r.status}". Only approved RFCs can be started.`);
-    saveState(root, { ...loadState(root), activeRfc: r.key });
-    log.ok(`Active RFC: RFC-${r.key} ${r.title}`);
-    if (isGitRepo(root) && !isSetupKey(r.key) && !flags['no-branch']) {
-      const branch = `rfc/${r.key}-${r.slug}`.slice(0, 80);
-      if (currentBranch(root) === branch) log.info(`Already on ${branch}`);
-      else {
-        const exists = git(['rev-parse', '--verify', '--quiet', branch], root).ok;
-        const res = git(exists ? ['checkout', branch] : ['checkout', '-b', branch], root);
-        if (res.ok) log.ok(`${exists ? 'Switched to' : 'Created'} branch ${branch}`);
-        else log.warn(`Could not switch branch (${res.stderr}). Commit or stash first, then: git checkout -b ${branch}`);
-      }
-    }
-    if (!isSetupKey(r.key)) log.info(`Next: failing tests for each acceptance criterion (reference them as RFC-${r.key}:AC-1). Optional detail: ${CLI} spec new`);
+    startRfc(root, r, flags);
+    if (!isSetupKey(r.key) && r.type !== 'fast-track') log.info(`Next: failing tests for each acceptance criterion (reference them as RFC-${r.key}:AC-1). Optional detail: ${CLI} spec new`);
     return 0;
   }
 
   if (sub === 'approve' || sub === 'reject') {
     // Deliberately interactive: agents run without a TTY, and the Claude hook blocks this command.
-    if (!process.stdin.isTTY || process.env.CLAUDECODE || process.env.CI) {
-      throw new Error(`\`rfc ${sub}\` is a human action and must be run in an interactive terminal.`);
-    }
-    const u = gitUser(root);
-    const who = u.display || u.name || 'unknown';
-    const approvers = cfg.approval.approvers || [];
-    if (approvers.length && !approvers.some((a) => [u.email, u.name].map((x) => x?.toLowerCase()).includes(a.toLowerCase()))) {
-      log.warn(`Your git identity (${who}) is not in approval.approvers; CI will reject this ${sub === 'approve' ? 'approval' : 'decision'}.`);
-    }
+    assertHuman(`rfc ${sub}`);
+    const who = warnIfNotApprover(root, cfg, sub === 'approve' ? 'approval' : 'decision');
     console.log(`\n${c.bold(`RFC-${r.key}: ${r.title}`)}  (currently ${r.status}, decision owner: ${r.decisionOwner || 'not set'})`);
     if (sub === 'approve') {
-      const { errors, warnings } = printLint(r);
+      const { errors, warnings } = printLint(r, root, cfg);
+      const ft = fastTrackRfcProblems(root, cfg, r);
+      if (ft.length) {
+        log.err('This fast-track RFC breaks the fast-track rules above. Fix affected_areas, or change type to "change" for a regular RFC.');
+        return 1;
+      }
       if (errors.length || warnings.length) console.log(c.yellow('Approving freezes the RFC as it is now.'));
     }
     const reason = sub === 'reject' ? str('reason') || (await ask('Reason (recorded in Change History)', '')) : '';
@@ -126,8 +151,7 @@ export default async function rfc({ pos, flags }) {
     }
     let text = read(r.absPath);
     if (sub === 'approve') {
-      text = setFields(text, { status: 'approved', approved_by: who, approved_on: today(), updated: today() });
-      text = appendHistory(text, today(), who, 'Approved');
+      text = approvedText(text, who);
     } else {
       text = setFields(text, { status: 'rejected', updated: today() });
       text = appendHistory(text, today(), who, reason ? `Rejected: ${reason}` : 'Rejected');

@@ -4,7 +4,7 @@ Draft a Request for Change for: @@ARGS@@
 2. Run `@@cli@@ rfc new "<short title>" --ticket <ref> --affects "<comma-separated globs>"`. Use `--fast-track` only for typos, docs-only changes, config tweaks or dependency bumps.
 3. Fill in every section of the generated file, keeping the format exactly:
    - frontmatter: `title`, `requested_by`, `decision_owner`, `affected_areas`; leave `status: draft`, `approved_by: null`, `approved_on: null`;
-   - affected_areas: if Serena is connected, derive them from the files that define and reference the symbols you will change (`find_referencing_symbols`);
+   - affected_areas: ask the **rails-explorer** subagent for the files that define and reference the symbols you will change;
    - Current Evidence: `Status` is Confirmed, Likely, Unclear, Missing or Contradiction; cite real sources and today's date; only use Confirmed for what you verified;
    - Acceptance Criteria: `- [ ] AC-1: Given …, when …, then …`, one observable behaviour each, including error cases;
    - Out Of Scope, Dependencies And Open Decisions, Verification Plan.

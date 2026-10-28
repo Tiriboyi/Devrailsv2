@@ -74,7 +74,7 @@ export default async function done({ flags }) {
   const crAbs = path.join(root, crRel);
   let cr = existing
     ? read(crAbs)
-    : template('docs/change-record.md', {
+    : template(rfc.type === 'fast-track' ? 'docs/change-record-fast.md' : 'docs/change-record.md', {
         key: id,
         title: rfc.title,
         rfcFile: rfc.file,
@@ -125,7 +125,7 @@ export default async function done({ flags }) {
   if (tests && !tests.ok) log.err('Tests failed — the work is not done.');
   console.log(`
 ${c.bold('Now complete by hand (or have the agent do it):')}
-  • ${crRel}: Summary, Fit-criteria evidence, Known limitations
+  • ${crRel}: ${rfc.type === 'fast-track' ? 'Summary' : 'Summary, Fit-criteria evidence, Known limitations'}
   • docs/STATUS.md: "Where we are" and "Next step"
 Then run: ${CLI} check`);
   return tests && !tests.ok ? 1 : 0;

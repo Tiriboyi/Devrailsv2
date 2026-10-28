@@ -17,6 +17,11 @@ Ticket ─▶ Analysis ─▶ RFC (draft, AC-1…n) ─▶ human approval ─▶
 | Document | `@@cli@@ done --run-tests` | `docs/changes/CR-<yyyy>-<nnn>-*.md`, CHANGELOG, STATUS, RFC checkboxes + Change History | agent |
 | Gate | `@@cli@@ check` | pass / fail | agent, hooks, CI |
 
+## Small changes
+`@@cli@@ quick "<title>" --affects "<files>" --request "…" --outcome "…" --verify "…" --approve` (human, in a terminal) creates a fast-track RFC in the RFC format, approves it, starts its branch and commits the approval in one go. Then make the change, `@@cli@@ done --run-tests`, open the PR.
+Without `--approve` (e.g. when an agent drafts it) the RFC waits for `rfc approve` as usual.
+Fast-track: no spec, acceptance criteria optional, a short change record; files in `paths.cosmetic` (styles, images, fonts, translations) need no tests.
+
 ## What enforces what
 | Rule | Claude Code hook | git hooks | CI |
 |---|---|---|---|
