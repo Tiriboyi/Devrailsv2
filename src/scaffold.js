@@ -72,6 +72,9 @@ export function buildVars(cfg) {
     testSteps: ciTestSteps(cfg),
     stackRules: template(`stack/${exists(path.join(TEMPLATES, 'stack', `${cfg.stack}.md`)) ? cfg.stack : 'other'}.md`),
     modelTable: modelTable(cfg),
+    scopeNote: (cfg.paths.scope || []).length
+      ? `- **Scope:** devrailsv2 applies only to ${cfg.paths.scope.map((d) => `\`${d}/\``).join(', ')}. Files outside it (e.g. the UI) are not gated; work on them normally. A change touching both still needs an approved RFC for the in-scope part.`
+      : '',
     serenaRules: cfg.serena?.enabled ? render(read(path.join(TEMPLATES, 'stack', 'serena.md')), { cli: CLI }) : '',
     migrationRules: m ? render(read(path.join(TEMPLATES, 'stack', 'migration.md')), { from: m.from, to: m.to, legacyPath: m.legacyPath, cli: CLI }) : '',
   };

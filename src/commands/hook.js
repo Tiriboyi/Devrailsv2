@@ -3,7 +3,7 @@
 //  SessionStart: stdout is added to Claude's context
 import path from 'node:path';
 import { findRoot, exists, read, toPosix, matchAny, matchAffects, CLI } from '../util.js';
-import { loadConfig, getActiveRfcId, FREE_PATHS, PROTECTED_PATHS } from '../config.js';
+import { loadConfig, getActiveRfcId, FREE_PATHS, PROTECTED_PATHS, inScope } from '../config.js';
 import { getRfc, acCoverage, isSetupKey } from '../docs.js';
 import { splitFrontmatter } from '../frontmatter.js';
 import { isSerenaTool, classifySerenaTool, serenaToolName, serenaTargets } from '../serena.js';
@@ -86,6 +86,7 @@ function gatePath(root, cfg, rel) {
     return { block: `${rel} is devrailsv2 tooling/agent configuration and is protected. Ask the user to change it.` };
   }
   if (matchAny(rel, FREE_PATHS)) return { allow: true };
+  if (!inScope(cfg, rel)) return { allow: true }; // monorepo: outside paths.scope devrailsv2 does not apply
   const r = requireActiveRfc(root, rel);
   if (r.block) return r;
   const { rfc } = r;
@@ -142,6 +143,7 @@ function serenaDecision(root, cfg, tool, ti) {
   if (name === 'replace_in_files' && (!targets.length || targets[0] === '.')) {
     return { block: 'replace_in_files across the whole repository could touch RFCs and tooling. Pass relative_path for the folder to change (e.g. src/billing).' };
   }
+  if (targets.length && targets.every((t) => t !== '.' && !inScope(cfg, t))) return { allow: true };
   const r = requireActiveRfc(root, `code (via Serena's ${name})`);
   if (r.block) return r;
   if (isSetupKey(r.rfc.key)) return { block: `RFC-${r.rfc.key} only covers the devrailsv2 setup. Draft a new RFC for this change.` };

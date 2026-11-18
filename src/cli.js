@@ -31,6 +31,7 @@ ${c.bold('devrailsv2')} — spec-driven, test-first guardrails for AI coding age
 
 ${c.bold('Setup')}
   init                      Interactive setup: new repo, existing repo, or migration
+                            [--scope backend] only gate one folder of a monorepo
   auth [test]               Choose/change how tickets are fetched (GitHub / Azure DevOps)
   update                    Refresh tooling, hooks, prompts and managed instruction blocks
   doctor                    Check that hooks, tooling, auth and Serena are in place

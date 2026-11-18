@@ -102,6 +102,16 @@ devrailsv2 models off | on | reset
 - AGENTS.md tells the agent to delegate searching and test runs to the subagents. The devrailsv2 hooks apply to subagents too, and agents cannot edit the command or agent files.
 - Switching models mid-conversation loses the prompt cache. Subagents avoid this because each starts with a small, fresh context. A fresh session per RFC keeps costs down too.
 
+## Monorepos: only one part under devrailsv2
+```bash
+devrailsv2 init --scope backend        # or answer "no" to "Apply devrailsv2 to the whole repository?"
+```
+- Only files inside `paths.scope` (here `backend/`) are gated: Claude hook, Serena edits, pre-commit, commit message and CI. The UI can be changed freely, and UI-only commits need no `RFC-…:` prefix.
+- devrailsv2's own files stay at the repository root (`AGENTS.md`, `docs/rfc`, `.rails`, hooks, CI) and stay protected.
+- `init` detects the stack inside the scope folder and prefixes the paths (`backend/src/**`, `backend/tests/**`); the test command becomes `cd backend && dotnet test`.
+- A change touching both UI and backend needs an approved RFC for the backend part; the UI files in it are ignored by the checks and the change record.
+- Several folders: `"scope": ["backend", "shared"]` in `.rails/config.json`. Add the `src`/`tests` globs for each.
+
 ## Measuring token usage
 ```bash
 devrailsv2 usage                 # last 30 days    (--days 0 = all time, --rfc 1, --json)

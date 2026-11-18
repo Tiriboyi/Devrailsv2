@@ -5,6 +5,7 @@ This repository uses **devrailsv2** for spec-driven, test-first development. The
 
 ## Project
 - Mode: **@@mode@@** · Stack: **@@stack@@** · Strictness: **@@strictness@@**
+@@scopeNote@@
 - Test command: `@@testCommand@@`
 - Source paths: @@srcGlobs@@
 - Test paths: @@testGlobs@@

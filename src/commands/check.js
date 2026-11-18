@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { findRoot, read, gitLines, git, toPosix, log, c } from '../util.js';
-import { loadConfig, getActiveRfcId } from '../config.js';
+import { loadConfig, getActiveRfcId, inScope, scopeOf } from '../config.js';
 import { evaluate, changedFiles, ciContext, detectBase, rfcIdsFrom, commitMessageProblem } from '../gate.js';
 import { lineStats } from '../fasttrack.js';
 
@@ -19,6 +19,10 @@ export default async function check({ flags }) {
 
   if (flags['commit-msg']) {
     const file = path.resolve(root, String(flags['commit-msg']));
+    if (scopeOf(cfg).length) {
+      const staged = gitLines(['diff', '--cached', '--name-only'], root).map(toPosix);
+      if (staged.length && !staged.some((f) => inScope(cfg, f))) return 0; // e.g. a UI-only commit
+    }
     const problem = commitMessageProblem(root, read(file));
     if (problem) {
       log.err(`devrailsv2: ${problem}`);

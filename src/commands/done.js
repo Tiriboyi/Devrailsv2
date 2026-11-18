@@ -2,7 +2,7 @@ import path from 'node:path';
 import {
   findRoot, exists, read, write, template, today, run, insertAfterMarker, replaceBetween, gitUser, log, c, CLI,
 } from '../util.js';
-import { loadConfig, getActiveRfcId } from '../config.js';
+import { loadConfig, getActiveRfcId, inScope } from '../config.js';
 import { getRfc, getChangeRecord, acCoverage, tickCriteria, appendHistory, isSetupKey, resolveRfcKey, CR_DIR, ANALYSIS_DIR } from '../docs.js';
 import { setFields } from '../frontmatter.js';
 import { changedFiles, detectBase, classify } from '../gate.js';
@@ -35,7 +35,7 @@ export default async function done({ flags }) {
   if (rfc.status !== 'approved') throw new Error(`RFC-${id} is "${rfc.status}", not approved.`);
 
   const base = flags.base && flags.base !== true ? flags.base : detectBase(root);
-  const files = changedFiles(root, base).filter((f) => !f.startsWith(`${CR_DIR}/CR-${id}`));
+  const files = changedFiles(root, base).filter((f) => !f.startsWith(`${CR_DIR}/CR-${id}`) && inScope(cfg, f));
   const tests = flags['run-tests'] ? runTests(root, cfg.testCommand) : null;
   const cov = acCoverage(root, cfg, id);
   const spec = cov.spec;

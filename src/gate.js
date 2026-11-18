@@ -1,6 +1,6 @@
 // The rules engine shared by `check`, the git hooks, CI and the Claude hook.
 import { git, gitLines, matchAny, matchAffects, toPosix, exists, readJson, isGitRepo } from './util.js';
-import { FREE_PATHS, cosmeticGlobs } from './config.js';
+import { FREE_PATHS, cosmeticGlobs, inScope, scopeOf } from './config.js';
 import { getRfc, getSpec, getChangeRecord, acCoverage, lintRfc, normalizeRfc, isSetupKey, pad3 } from './docs.js';
 import { splitFrontmatter } from './frontmatter.js';
 import { fastTrackRfcProblems, fastTrackChangeProblems } from './fasttrack.js';
@@ -132,7 +132,7 @@ export async function labelApproval(cfg, ctx) {
 /**
  * phase: 'commit' (pre-commit) | 'local' (devrailsv2 check) | 'ci' (pull request gate)
  */
-export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {}, stats = null }) {
+export async function evaluate(root, cfg, { files: allFiles, rfcIds, phase, ctx = {}, stats = null }) {
   const errors = [];
   const warnings = [];
   const notes = [];
@@ -141,6 +141,9 @@ export async function evaluate(root, cfg, { files, rfcIds, phase, ctx = {}, stat
   const soft = (m) => (light ? warnings : errors).push(m); // enforced in standard/strict, warning in light
   const warn = (m) => warnings.push(m);
 
+  const files = allFiles.filter((f) => inScope(cfg, f));
+  const outside = allFiles.length - files.length;
+  if (outside) notes.push(`${outside} file(s) outside the devrailsv2 scope (${scopeOf(cfg).join(', ')}) are not checked.`);
   const groups = { free: [], test: [], src: [], legacy: [], other: [], tooling: [], docs: [] };
   for (const f of files) groups[classify(cfg, f)].push(f);
   const gated = files.filter((f) => classify(cfg, f) !== 'free');

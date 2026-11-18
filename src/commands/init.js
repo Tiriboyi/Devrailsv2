@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   exists, isInteractive, ask, select, confirm, git, isGitRepo, gitUser, log, c, CLI,
 } from '../util.js';
-import { STACKS, normStack, saveConfig, saveState, loadConfig, DEFAULT_COSMETIC, DEFAULT_FAST_TRACK } from '../config.js';
+import { STACKS, normStack, saveConfig, saveState, loadConfig, DEFAULT_COSMETIC, DEFAULT_FAST_TRACK, prefixGlobs } from '../config.js';
 import { configureTracker, describeTracker, testAuth } from './auth.js';
 import { generate, printActions } from '../scaffold.js';
 import { serenaInstalled } from '../serena.js';
@@ -29,10 +29,20 @@ export default async function init({ flags }) {
   if (loadConfig(root, { optional: true }) && !flags.force) {
     throw new Error('This repo is already initialised. Use `devrailsv2 update` to refresh, or `init --force` to start over.');
   }
-  const detected = detectStack(root);
-  const codePresent = hasCode(root);
-
   console.log(c.bold('\ndevrailsv2 setup\n'));
+
+  // 0. Scope: whole repository, or one folder of a monorepo (e.g. only the backend)
+  const subdirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules').map((d) => d.name);
+  let scopeDir = flags.scope && flags.scope !== true ? String(flags.scope) : '';
+  if (!scopeDir && interactive && subdirs.length) {
+    const whole = await confirm('Apply devrailsv2 to the whole repository?', true);
+    if (!whole) scopeDir = await ask(`Which folder? (${subdirs.slice(0, 6).join(', ')})`, subdirs.find((d) => /back|api|server|service/i.test(d)) || subdirs[0]);
+  }
+  scopeDir = scopeDir.replace(/\\/g, '/').replace(/^\.\/|\/+$/g, '');
+  if (scopeDir && !exists(path.join(root, scopeDir))) throw new Error(`Scope folder "${scopeDir}" does not exist.`);
+  const codeRoot = scopeDir ? path.join(root, scopeDir) : root;
+  const detected = detectStack(codeRoot);
+  const codePresent = hasCode(codeRoot);
 
   // 1. Mode
   const mode =
@@ -73,7 +83,7 @@ export default async function init({ flags }) {
   if (!['light', 'standard', 'strict'].includes(strictness)) throw new Error(`Unknown strictness "${strictness}".`);
 
   // 4. Test command
-  const defTest = STACKS[stack].testCommand;
+  const defTest = scopeDir ? `cd ${scopeDir} && ${STACKS[stack].testCommand}` : STACKS[stack].testCommand;
   const testCommand = flags['test-command'] || (interactive ? await ask('Command that runs the tests', defTest) : defTest);
 
   // 5. Tracker + auth (changeable later with `devrailsv2 auth`)
@@ -105,7 +115,12 @@ export default async function init({ flags }) {
     );
   }
 
-  const paths = { src: [...STACKS[stack].src], tests: [...STACKS[stack].tests], cosmetic: [...DEFAULT_COSMETIC] };
+  const paths = {
+    ...(scopeDir ? { scope: [scopeDir] } : {}),
+    src: prefixGlobs(STACKS[stack].src, scopeDir),
+    tests: prefixGlobs(STACKS[stack].tests, scopeDir),
+    cosmetic: [...DEFAULT_COSMETIC],
+  };
   if (migration) {
     paths.legacy = [`${migration.legacyPath}/**`];
     for (const t of STACKS[migration.from]?.tests ?? []) if (!paths.tests.includes(t)) paths.tests.push(t);
@@ -136,6 +151,7 @@ export default async function init({ flags }) {
 
   console.log(`\n${c.bold('Summary')}`);
   console.log(`  mode        ${mode}${migration ? ` (${migration.from} → ${migration.to}, old code in ${migration.legacyPath}/)` : ''}`);
+  console.log(`  scope       ${scopeDir ? `${scopeDir}/ only (the rest of the repo is not gated)` : 'whole repository'}`);
   console.log(`  stack       ${STACKS[stack].label}`);
   console.log(`  strictness  ${strictness}`);
   console.log(`  tests       ${testCommand}`);

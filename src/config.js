@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { readJson, writeJson, currentBranch } from './util.js';
+import { readJson, writeJson, currentBranch, globToRegex } from './util.js';
 
 export const CONFIG_PATH = '.rails/config.json';
 export const STATE_PATH = '.rails/state.json';
@@ -72,6 +72,22 @@ export const DEFAULT_FAST_TRACK = {
 };
 export const fastTrackRules = (cfg) => ({ ...DEFAULT_FAST_TRACK, ...(cfg?.fastTrack || {}) });
 export const LOCKFILES = ['**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/packages.lock.json', '**/*.lock'];
+
+/** Monorepo support: when paths.scope is set (e.g. ["backend"]), devrailsv2 only gates files inside it. */
+export const scopeOf = (cfg) => (Array.isArray(cfg?.paths?.scope) ? cfg.paths.scope.filter(Boolean) : []);
+const DEVRAILS_FILES = ['docs/rfc/**', 'docs/specs/**', 'docs/changes/**', 'docs/adr/**', 'docs/analysis/**', 'docs/STATUS.md', 'docs/guides/**', 'docs/migration/**', 'CHANGELOG.md', 'AGENTS.md', 'CLAUDE.md'];
+export function inScope(cfg, file) {
+  const scope = scopeOf(cfg);
+  if (!scope.length) return true;
+  const f = String(file).replace(/\\/g, '/');
+  if (DEVRAILS_FILES.some((g) => globToRegex(g).test(f)) || PROTECTED_PATHS.some((g) => globToRegex(g).test(f))) return true;
+  return scope.some((d) => {
+    const g = d.replace(/\\/g, '/').replace(/\/+$/, '');
+    return /[*?]/.test(g) ? globToRegex(g).test(f) : f === g || f.startsWith(`${g}/`);
+  });
+}
+/** Prefix stack globs with the scope folder: src/** → backend/src/**. */
+export const prefixGlobs = (globs, dir) => (dir ? globs.map((g) => `${dir.replace(/\/+$/, '')}/${g}`) : [...globs]);
 
 export function normStack(s) {
   const v = String(s || '').toLowerCase().trim();
