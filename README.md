@@ -102,6 +102,20 @@ devrailsv2 models off | on | reset
 - AGENTS.md tells the agent to delegate searching and test runs to the subagents. The devrailsv2 hooks apply to subagents too, and agents cannot edit the command or agent files.
 - Switching models mid-conversation loses the prompt cache. Subagents avoid this because each starts with a small, fresh context. A fresh session per RFC keeps costs down too.
 
+## Measuring token usage
+```bash
+devrailsv2 usage                 # last 30 days    (--days 0 = all time, --rfc 1, --json)
+```
+Reads Claude Code's own session logs on this machine (`~/.claude/projects/<repo>/…`); nothing is sent anywhere. It reports:
+- totals: requests, input / output / cache-write / cache-read tokens, **cache hit rate**, estimated cost;
+- **by RFC** (from the `rfc/<yyyy>-<nnn>-…` branch active at the time, marked `[fast]` for fast-track);
+- **by step** (`/rails-ticket`, `/rails-implement`, … and each subagent, e.g. `subagent: rails-explorer`);
+- **by model**;
+- **fixed overhead**: the measured context a new session starts with, the size of AGENTS.md and its largest sections, and connected MCP servers;
+- hints: low cache hit rate, sessions spanning several RFCs, sessions over 120k tokens, too little delegation, an oversized AGENTS.md.
+
+Costs are list-price estimates; set your own in `.rails/config.json` → `usage.prices` (`{"opus": {"input": 5, "output": 25}, …}`, USD per million tokens). GitHub Copilot doesn't expose token counts; see premium requests in your GitHub billing settings. For dashboards across repos, Claude Code can also export the `claude_code.token.usage` and `claude_code.cost.usage` metrics via OpenTelemetry (`CLAUDE_CODE_ENABLE_TELEMETRY=1`).
+
 ## Small changes: `quick`
 A cosmetic fix shouldn't need a full RFC, but it should still be approved and recorded.
 ```bash

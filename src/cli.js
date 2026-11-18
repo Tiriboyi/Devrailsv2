@@ -57,6 +57,8 @@ ${c.bold('Workflow')}
   adr new "<title>"         Record an architecture decision
   done [--rfc id]           Write the change record, CHANGELOG and STATUS   [--run-tests]
   status                    Where are we: active RFC, AC coverage, next step
+  usage [--days 30] [--rfc id] [--json]
+                            Claude Code tokens per RFC, step, subagent and model; cache hit rate; fixed overhead
   audit [--days 90]         How fast-track is used: share, sizes, protected areas, split work
 
 ${c.bold('Gate')}
@@ -88,6 +90,7 @@ export async function main(argv) {
     serena: () => import('./commands/serena.js'),
     models: () => import('./commands/models.js'),
     audit: () => import('./commands/audit.js'),
+    usage: () => import('./commands/usage.js'),
     ticket: () => import('./commands/ticket.js'),
     rfc: () => import('./commands/rfc.js'),
     quick: () => import('./commands/quick.js'),
