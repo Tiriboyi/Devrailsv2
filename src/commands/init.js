@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   exists, isInteractive, ask, select, confirm, git, isGitRepo, gitUser, log, c, CLI,
 } from '../util.js';
-import { STACKS, normStack, saveConfig, saveState, loadConfig, DEFAULT_COSMETIC, DEFAULT_FAST_TRACK, prefixGlobs } from '../config.js';
+import { STACKS, normStack, saveConfig, saveState, loadConfig, DEFAULT_COSMETIC, DEFAULT_FAST_TRACK, prefixGlobs, DEFAULT_DOCS, DEFAULT_DOCS_EXCLUDE, DEFAULT_NO_RFC } from '../config.js';
 import { configureTracker, describeTracker, testAuth } from './auth.js';
 import { generate, printActions } from '../scaffold.js';
 import { serenaInstalled } from '../serena.js';
@@ -120,6 +120,9 @@ export default async function init({ flags }) {
     src: prefixGlobs(STACKS[stack].src, scopeDir),
     tests: prefixGlobs(STACKS[stack].tests, scopeDir),
     cosmetic: [...DEFAULT_COSMETIC],
+    docs: [...DEFAULT_DOCS],
+    docsExclude: [...DEFAULT_DOCS_EXCLUDE],
+    noRfc: [...DEFAULT_NO_RFC],
   };
   if (migration) {
     paths.legacy = [`${migration.legacyPath}/**`];

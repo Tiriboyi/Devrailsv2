@@ -65,8 +65,12 @@ export default async function rfc({ pos, flags }) {
   if (sub === 'new') {
     const title = pos.slice(1).join(' ') || str('title') || (process.stdin.isTTY ? await ask('RFC title') : '');
     if (!title) throw new Error('Usage: devrailsv2 rfc new "<title>" [--ticket GH#12] [--affects "src/billing/**"] [--fast-track]');
-    const fast = !!flags['fast-track'];
-    if (fast && cfg.strictness === 'strict') throw new Error('Fast-track RFCs are disabled in strict mode.');
+    const fast = !!(flags['fast-track'] || flags.fasttrack);
+    if (fast) {
+      // One route for fast-track: the short template, approval on the spot, no separate approval commit.
+      const { default: quick } = await import('./quick.js');
+      return quick({ pos: [title], flags: { ...flags, title: undefined } });
+    }
     const key = nextRfcKey(root);
     const u = gitUser(root);
     const author = u.name || u.email || 'unknown';
@@ -158,6 +162,13 @@ export default async function rfc({ pos, flags }) {
     }
     write(r.absPath, text);
     log.ok(`RFC-${r.key} ${sub === 'approve' ? 'approved' : 'rejected'}.`);
+    if (sub === 'approve' && r.type === 'fast-track') {
+      const { addChangelog } = await import('./quick.js');
+      const extra = addChangelog(root, r.key, r.title, r.relPath);
+      if (isGitRepo(root)) git(['add', '--', r.relPath, ...(extra ? [extra] : [])], root);
+      log.info(`Staged: it goes into the same commit as your change. Next: ${CLI} rfc start ${r.key}, make the change, git commit, git push.`);
+      return 0;
+    }
     log.info(`Commit it yourself so the decision is attributed to you:\n  git add ${r.relPath} && git commit -m "RFC-${r.key}: ${sub}"`);
     return 0;
   }

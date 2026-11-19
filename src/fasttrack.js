@@ -2,16 +2,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { matchAny, gitLines, toPosix } from './util.js';
-import { fastTrackRules, cosmeticGlobs, LOCKFILES } from './config.js';
+import { fastTrackRules, cosmeticGlobs, LOCKFILES, isDocFile } from './config.js';
 
 /** Problems with the RFC itself (checked before approval). */
 export function fastTrackRfcProblems(root, cfg, rfc) {
   if (rfc.type !== 'fast-track') return [];
   const rules = fastTrackRules(cfg);
   const out = [];
-  if (!rfc.affects.length) out.push('fast-track RFCs must list the exact files in affected_areas.');
+  const docEntry = (p) => isDocFile(cfg, p.replace(/\*\*\/?/g, 'x/').replace(/\*/g, 'x')) || /^docs\//.test(p);
   for (const a of rfc.affects) {
     const p = toPosix(String(a).trim());
+    if (docEntry(p)) continue; // documentation: folders, ** and any size are fine
     if (p.includes('**')) out.push(`affected_areas entry "${p}" uses **; fast-track RFCs must list exact files (or a * pattern inside one folder).`);
     else if (!/[*?]/.test(p) && fs.existsSync(path.join(root, p)) && fs.statSync(path.join(root, p)).isDirectory()) {
       out.push(`affected_areas entry "${p}" is a whole folder; list the files.`);
@@ -20,7 +21,7 @@ export function fastTrackRfcProblems(root, cfg, rfc) {
       out.push(`"${p}" is in a protected area (fastTrack.forbidden: auth, payments, migrations, CI, infrastructure…); use a regular RFC.`);
     }
   }
-  if (rfc.affects.length > rules.maxFiles) out.push(`affected_areas lists ${rfc.affects.length} entries; fast-track allows at most ${rules.maxFiles}.`);
+  if (rfc.affects.filter((a) => !docEntry(toPosix(String(a).trim()))).length > rules.maxFiles) out.push(`affected_areas lists ${rfc.affects.length} entries; fast-track allows at most ${rules.maxFiles}.`);
   return out;
 }
 
@@ -48,17 +49,28 @@ export function lineStats(root, { base = null, staged = false, includeWorking = 
 }
 
 /** Problems with the change made under fast-track RFCs (checked at commit and in CI). */
-export function fastTrackChangeProblems(cfg, { files, stats, fastKeys, phase }) {
+export function fastTrackChangeProblems(cfg, { files, stats, fastKeys, phase, micro = false }) {
   const rules = fastTrackRules(cfg);
   const out = [];
-  const gated = files.filter((f) => !/^docs\//.test(f) && f !== 'CHANGELOG.md');
+  // Documentation never counts towards the limits and may be anywhere: doc-only changes always fit fast-track.
+  const gated = files.filter((f) => !isDocFile(cfg, f) && f !== 'CHANGELOG.md');
   const forbidden = gated.filter((f) => matchAny(f, rules.forbidden));
   if (forbidden.length) out.push(`Fast-track may not touch protected areas: ${forbidden.join(', ')}. Use a regular RFC.`);
-  if (gated.length > rules.maxFiles) out.push(`Fast-track change touches ${gated.length} files; the limit is ${rules.maxFiles}. Use a regular RFC.`);
-  if (stats) {
-    const counted = gated.filter((f) => !matchAny(f, cosmeticGlobs(cfg)) && !matchAny(f, LOCKFILES));
-    const lines = counted.reduce((n, f) => n + (stats.get(f) || 0), 0);
-    if (lines > rules.maxLines) out.push(`Fast-track change is ${lines} lines (added + removed, excluding styles, assets, docs and lockfiles); the limit is ${rules.maxLines}. Use a regular RFC.`);
+  if (micro) {
+    // No file list: the whole change must be tiny. Every line counts (also styles), except lockfiles.
+    const counted = gated.filter((f) => !matchAny(f, LOCKFILES));
+    if (counted.length > rules.micro.maxFiles) out.push(`Micro change touches ${counted.length} files; the limit is ${rules.micro.maxFiles}. Add --affects with the files (larger fast-track) or use a regular RFC.`);
+    if (stats) {
+      const lines = counted.reduce((n, f) => n + (stats.get(f) || 0), 0);
+      if (lines > rules.micro.maxLines) out.push(`Micro change is ${lines} lines (added + removed); the limit is ${rules.micro.maxLines}. Add --affects with the files (larger fast-track) or use a regular RFC.`);
+    }
+  } else {
+    if (gated.length > rules.maxFiles) out.push(`Fast-track change touches ${gated.length} files; the limit is ${rules.maxFiles}. Use a regular RFC.`);
+    if (stats) {
+      const counted = gated.filter((f) => !matchAny(f, cosmeticGlobs(cfg)) && !matchAny(f, LOCKFILES));
+      const lines = counted.reduce((n, f) => n + (stats.get(f) || 0), 0);
+      if (lines > rules.maxLines) out.push(`Fast-track change is ${lines} lines (added + removed, excluding styles, assets, docs and lockfiles); the limit is ${rules.maxLines}. Use a regular RFC.`);
+    }
   }
   if (phase === 'ci' && rules.onePerPullRequest && fastKeys.length > 1) {
     out.push(`This pull request uses ${fastKeys.length} fast-track RFCs (${fastKeys.map((k) => `RFC-${k}`).join(', ')}); only one is allowed per pull request. Combine them in one RFC or split the PR.`);

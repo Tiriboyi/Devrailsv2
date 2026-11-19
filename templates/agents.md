@@ -24,7 +24,7 @@ This repository uses **devrailsv2** for spec-driven, test-first development. The
 9. **Done.** `devrailsv2 done --run-tests` writes the change record, CHANGELOG and STATUS history, ticks the verified criteria and adds a Change History row to the RFC. Then complete the change record (summary, fit-criteria evidence, limitations) and update "Where we are" and "Next step" in `docs/STATUS.md`.
 10. **Gate.** `devrailsv2 check` must pass before you say the work is finished. Report any warnings honestly.
 
-**No code, config, dependency or infrastructure change without an approved RFC.** If you are asked to change something and there is no approved RFC for it, draft the RFC and stop. An approved RFC is frozen: if scope must change, set `status: draft` (this revokes approval), update it, and ask for re-approval.
+**No code, config, dependency or infrastructure change without an approved RFC.** Exception: `.gitignore` and `.editorconfig` (`paths.noRfc`) never need one. If you are asked to change something and there is no approved RFC for it, draft the RFC and stop. An approved RFC is frozen: if scope must change, set `status: draft` (this revokes approval), update it, and ask for re-approval.
 
 ## Delegation and models (token budget)
 Keep the main conversation small. Hand bulky work to the helper subagents and work with their short reports:
@@ -39,14 +39,13 @@ Each step runs on the model configured in `.rails/config.json` → `models` (cha
 Start a fresh session for each RFC; `docs/STATUS.md` and the session-start hook give you the context you need.
 
 ## Small changes (fast-track)
-For typos, styling, icons, images, translations, config tweaks and dependency bumps, use a fast-track RFC instead of a full one:
-`devrailsv2 quick "<title>" --affects "<exact files>" --request "…" --outcome "…" --verify "…"`.
-It is pre-filled in the RFC format; only Request, Desired Outcome and Verification Plan need writing. A human still approves it.
-- Keep `--affects` to the exact files. A fast-track RFC must not change behaviour; if logic changes, use a regular RFC.
-- Changes that only touch cosmetic files (`paths.cosmetic` in `.rails/config.json`: styles, images, fonts, translations) need no tests. Anything else still needs tests.
-- Never pass `--approve`: that is the human's shortcut and it is blocked for agents.
-- Fast-track limits (enforced): exact files only (no `**` or folders), at most 10 files and 200 changed lines (styles, assets, docs and lockfiles not counted), never auth, security, payments, migrations, CI or infrastructure, and one fast-track RFC per pull request. If a change hits a limit, stop and propose a regular RFC; never split work to stay under the limits.
-- Several small fixes may share one fast-track RFC (e.g. "UI polish, week 44") as long as every file is listed in `affected_areas`.
+For tiny changes (colours, wording, typos, a patch-level version bump) run `devrailsv2 quick "<what changes>"`. It drafts a complete fast-track RFC; nothing needs filling in. Then **stop and ask the user to approve it** (`devrailsv2 rfc approve <id>`). You cannot approve it, and you must never pass `--approve`.
+- Micro (no `--affects`): the whole change must stay within 10 changed lines in 3 files. No tests or change record needed.
+- Larger fast-track: `--affects "<exact files>"`, at most 10 files and 200 changed lines (styles, assets, docs and lockfiles not counted); edits are limited to those files; non-cosmetic changes need tests.
+- Documentation (`*.md`, `*.txt`, `docs/**`…; not AGENTS.md, CLAUDE.md, `.github/**` or `requirements*.txt`) always goes fast-track, whatever its size, and doesn't count towards the limits.
+- Never fast-track auth, security, permissions, payments, billing, migrations, SQL, CI or infrastructure, and use one fast-track RFC per pull request.
+- If a change outgrows the limits, stop and propose a regular RFC; never split work to stay under them.
+- Commit messages get the `RFC-…:` prefix automatically.
 
 ## Writing an RFC
 The RFC has YAML frontmatter followed by fixed sections. Keep the format exactly.

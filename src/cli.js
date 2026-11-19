@@ -2,7 +2,7 @@ import { readJson, closePrompts, PKG_ROOT, c } from './util.js';
 import path from 'node:path';
 
 const BOOL = new Set([
-  'yes', 'force', 'dry-run', 'fast-track', 'approve', 'no-models', 'no-serena', 'keep-assets', 'no-images', 'azure', 'run-tests', 'staged', 'ci', 'json', 'branch', 'help', 'version', 'no-git', 'no-branch', 'quiet',
+  'yes', 'force', 'dry-run', 'fast-track', 'fasttrack', 'here', 'approve', 'no-models', 'no-serena', 'keep-assets', 'no-images', 'azure', 'run-tests', 'staged', 'ci', 'json', 'branch', 'help', 'version', 'no-git', 'no-branch', 'quiet',
 ]);
 
 export function parseArgs(argv) {
@@ -45,9 +45,9 @@ ${c.bold('Workflow')}
   ticket lint <id>          Is the ticket complete enough for an agent? (exit 1 if not)
   ticket templates --azure  Create Azure DevOps work item templates   [--team "<team>"] [--dry-run]
   rfc new "<title>"         Draft a Request for Change   [--ticket id] [--affects globs] [--fast-track]
-  quick "<title>" --affects <files>
-                            Fast-track RFC for a small/cosmetic change, pre-filled
-                            [--request --outcome --verify "…"] [--approve: human only, approves + starts]
+  quick "<title>"           Fast-track a tiny change (≤ 10 lines / 3 files): approve, branch, done
+                            [--affects <files>] larger fast-track (≤ 200 lines / 10 listed files)
+                            [--here] stay on the current branch  [--request --outcome --verify "…"]
   rfc list | show <id>      List or print RFCs (ids: RFC-2026-001, 2026-001 or 1)
   rfc lint [id]             Check an RFC against the required format
   rfc start <id>            Make an approved RFC active and switch to its branch
@@ -66,6 +66,7 @@ ${c.bold('Gate')}
   check                     Full check of current work against the base branch
   check --staged            Pre-commit check
   check --commit-msg <file> Commit message check
+  check --prepare-msg <file> Add the active RFC id to a commit message (git hook)
   check --ci                Pull-request gate (GitHub Actions / Azure Pipelines)
   hook claude|session-start Claude Code hooks (reads JSON on stdin)
 

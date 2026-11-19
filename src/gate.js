@@ -1,6 +1,6 @@
 // The rules engine shared by `check`, the git hooks, CI and the Claude hook.
 import { git, gitLines, matchAny, matchAffects, toPosix, exists, readJson, isGitRepo } from './util.js';
-import { FREE_PATHS, cosmeticGlobs, inScope, scopeOf } from './config.js';
+import { freePaths, cosmeticGlobs, inScope, scopeOf, isDocFile } from './config.js';
 import { getRfc, getSpec, getChangeRecord, acCoverage, lintRfc, normalizeRfc, isSetupKey, pad3 } from './docs.js';
 import { splitFrontmatter } from './frontmatter.js';
 import { fastTrackRfcProblems, fastTrackChangeProblems } from './fasttrack.js';
@@ -8,12 +8,13 @@ import { ghHeaders, githubApi } from './commands/auth.js';
 
 export function classify(cfg, file) {
   const f = toPosix(file);
-  if (matchAny(f, FREE_PATHS)) return 'free';
+  if (matchAny(f, freePaths(cfg))) return 'free';
+  if (/^(\.rails|\.github|\.claude|\.githooks)\//.test(f)) return 'tooling';
+  if (isDocFile(cfg, f)) return 'docs'; // before src/tests: src/Api/README.md is documentation, not code
   if (matchAny(f, cfg.paths.tests)) return 'test';
   if (cfg.paths.legacy && matchAny(f, cfg.paths.legacy)) return 'legacy';
   if (matchAny(f, cfg.paths.src)) return 'src';
-  if (/^(\.rails|\.github|\.claude|\.githooks)\//.test(f)) return 'tooling';
-  if (f.startsWith('docs/') || /\.md$/i.test(f)) return 'docs';
+  if (/\.md$/i.test(f)) return 'docs'; // e.g. AGENTS.md: not exempt from fast-track limits, but not code either
   return 'other'; // config, manifests, dependencies, infrastructure
 }
 
@@ -153,7 +154,7 @@ export async function evaluate(root, cfg, { files: allFiles, rfcIds, phase, ctx 
     return { errors, warnings, notes, groups };
   }
   if (!gated.length) {
-    notes.push('Only RFC/spec/analysis/ADR documents changed — no approved RFC needed.');
+    notes.push('Only RFC drafts or files that need no RFC (e.g. .gitignore) changed — no approved RFC needed.');
     return { errors, warnings, notes, groups };
   }
   if (!rfcIds.length) {
@@ -232,7 +233,7 @@ export async function evaluate(root, cfg, { files: allFiles, rfcIds, phase, ctx 
     }
 
     // --- documentation of the change ---
-    if (phase !== 'commit' && !getChangeRecord(root, key)) {
+    if (phase !== 'commit' && !getChangeRecord(root, key) && rfc.type !== 'fast-track') {
       (phase === 'ci' ? soft : warn)(`No change record for RFC-${key}. Run \`devrailsv2 done\` when the work is complete.`);
     }
   }
@@ -242,12 +243,16 @@ export async function evaluate(root, cfg, { files: allFiles, rfcIds, phase, ctx 
   const fastKeys = realRfcs.filter((r) => r.type === 'fast-track').map((r) => r.key);
   if (fastKeys.length) {
     for (const r of realRfcs.filter((x) => x.type === 'fast-track')) for (const p of fastTrackRfcProblems(root, cfg, r)) errors.push(`RFC-${r.key}: ${p}`);
-    if (fastKeys.length === realRfcs.length) errors.push(...fastTrackChangeProblems(cfg, { files: gated, stats, fastKeys, phase }));
+    const micro = realRfcs.some((r) => r.type === 'fast-track' && !r.affects.length);
+    if (fastKeys.length === realRfcs.length) errors.push(...fastTrackChangeProblems(cfg, { files: gated, stats, fastKeys, phase, micro }));
   }
 
   // --- tests accompany code ---
+  const realRfcsForTests = rfcIds.filter((k) => !isSetupKey(k)).map((k) => getRfc(root, k)).filter(Boolean);
   if (codeChanged && !bootstrapOnly) {
+    const microOnly = realRfcsForTests.length > 0 && realRfcsForTests.every((r) => r.type === 'fast-track' && !r.affects.length);
     if (!logicChanged.length) notes.push('Only cosmetic files changed (styles, images, translations): no tests required.');
+    else if (microOnly && !groups.test.length) warn('Micro fast-track change without tests (allowed within the micro limits).');
     else if (anyExemption) warn(`Test exemption in use: "${anyExemption}".`);
     else if (!groups.test.length) {
       const msg = `Source changed (${logicChanged.slice(0, 5).join(', ')}${logicChanged.length > 5 ? '…' : ''}) but no tests changed. Add tests, or add test_exemption to the RFC frontmatter for a human to approve.`;
@@ -273,7 +278,7 @@ export async function evaluate(root, cfg, { files: allFiles, rfcIds, phase, ctx 
   // --- changelog / status ---
   if (phase === 'ci' && !bootstrapOnly) {
     if (!files.includes('CHANGELOG.md')) soft('CHANGELOG.md was not updated (`devrailsv2 done` does this).');
-    if (!files.includes('docs/STATUS.md')) warn('docs/STATUS.md was not updated.');
+    if (!files.includes('docs/STATUS.md') && !realRfcs.every((r) => r.type === 'fast-track')) warn('docs/STATUS.md was not updated.');
   }
   return { errors, warnings, notes, groups };
 }

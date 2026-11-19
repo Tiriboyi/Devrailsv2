@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { exists, read, pad, toPosix, matchAny, listRepoFiles } from './util.js';
+import { exists, read, pad, toPosix, matchAny, listRepoFiles, gitLines } from './util.js';
 import { splitFrontmatter } from './frontmatter.js';
 
 export const RFC_DIR = 'docs/rfc';
@@ -33,6 +33,11 @@ function listKeyed(root, dir, prefix) {
 
 export function nextRfcKey(root, year = thisYear()) {
   const seqs = listKeyed(root, RFC_DIR, 'RFC').filter((e) => e.key.startsWith(`${year}-`)).map((e) => parseInt(e.key.slice(5), 10));
+  // Also count RFCs that only exist on other branches (local or fetched), so parallel branches don't reuse an id.
+  for (const f of gitLines(['log', '--all', '--format=', '--name-only', '--', `${RFC_DIR}/`], root)) {
+    const m = f.match(new RegExp(`RFC-${year}-(\\d{3,4})`));
+    if (m) seqs.push(parseInt(m[1], 10));
+  }
   return `${year}-${pad3(Math.max(0, ...seqs) + 1)}`;
 }
 
@@ -213,7 +218,7 @@ export function lintRfc(rfc) {
   const ids = rfc.acs.map((a) => a.id).filter(Boolean);
   const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
   if (dup.length) errors.push(`duplicate acceptance criteria ids: ${[...new Set(dup)].join(', ')}.`);
-  if (!rfc.affects.length) warnings.push('affected_areas is empty, so scope cannot be checked.');
+  if (!rfc.affects.length && !fast) warnings.push('affected_areas is empty, so scope cannot be checked.');
   return { errors, warnings };
 }
 

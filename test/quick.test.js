@@ -18,40 +18,84 @@ function repoWithCode(name, extra = []) {
   return dir;
 }
 
-test('quick drafts a fast-track RFC in the RFC format with only three sections to write', () => {
+test('quick drafts a complete fast-track RFC; rfc new --fast-track uses the same short route', () => {
   const dir = repoWithCode('quick-draft');
-  let r = cli(dir, ['quick', 'Fix button padding', '--affects', 'src/ui/Button.css']);
+  let r = cli(dir, ['quick', 'Fix button padding']);
   assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /micro: ≤ 10 lines, ≤ 3 files/);
   const t = read(dir, rfcPath(dir));
-  for (const line of [`id: RFC-${K1}`, 'type: fast-track', 'status: draft', 'approved_by: null', 'affected_areas: [src/ui/Button.css]']) assert.ok(t.includes(`\n${line}\n`), line);
+  for (const line of [`id: RFC-${K1}`, 'type: fast-track', 'status: draft', 'approved_by: null', 'affected_areas: []']) assert.ok(t.includes(`\n${line}\n`), line);
   for (const h of ['Request', 'Business Reason', 'Current Evidence', 'Desired Outcome', 'Acceptance Criteria', 'Out Of Scope', 'Dependencies And Open Decisions', 'Verification Plan', 'Change History']) assert.match(t, new RegExp(`^## ${h}$`, 'm'));
   r = cli(dir, ['rfc', 'lint', K1]);
-  assert.match(r.out, /placeholders not filled in: Request, Desired Outcome, Verification Plan\./);
-  assert.doesNotMatch(r.out, /no acceptance criteria/);
-
-  const dir2 = repoWithCode('quick-full');
-  assert.equal(cli(dir2, ['quick', 'Fix button padding', '--affects', 'src/ui/Button.css', '--ticket', 'GH#9', '--criterion', 'Given 375 px, the button has 12 px padding', ...full]).code, 0);
-  r = cli(dir2, ['rfc', 'lint', K1]);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /is complete/);
-  assert.match(read(dir2, rfcPath(dir2)), /- \[ \] AC-1: Given 375 px/);
-  assert.match(read(dir2, rfcPath(dir2)), /Ticket: GH#9/);
+  assert.match(r.out, /is complete/, 'nothing left to fill in');
+  assert.match(git(dir, 'status', '--porcelain').out, /^A  docs\/rfc\//m, 'the draft is staged');
+
+  const dir2 = repoWithCode('quick-rfcnew');
+  r = cli(dir2, ['rfc', 'new', 'Change submit button color', '--fasttrack']);
+  assert.equal(r.code, 0, r.out);
+  assert.match(read(dir2, rfcPath(dir2)), /^type: fast-track$/m);
+  assert.match(read(dir2, rfcPath(dir2)), /Micro change: at most 10 changed lines/);
+
+  const dir3 = repoWithCode('quick-full');
+  assert.equal(cli(dir3, ['quick', 'Fix button padding', '--affects', 'src/ui/Button.css', '--ticket', 'GH#9', '--criterion', 'Given 375 px, the button has 12 px padding', ...full]).code, 0);
+  assert.match(read(dir3, rfcPath(dir3)), /- \[ \] AC-1: Given 375 px/);
+  assert.match(read(dir3, rfcPath(dir3)), /Ticket: GH#9/);
+  assert.match(read(dir3, rfcPath(dir3)), /affected_areas: \[src\/ui\/Button\.css\]/);
 });
 
-test('quick needs --affects, is refused in strict mode, and --approve is human-only', () => {
+test('quick is refused in strict mode, and approving is human-only', () => {
   const dir = repoWithCode('quick-guard');
-  assert.notEqual(cli(dir, ['quick', 'No scope']).code, 0);
-  const agent = cli(dir, ['quick', 'X', '--affects', 'src/ui/Button.css', '--approve', ...full], { env: { CLAUDECODE: '1' } });
+  const agent = cli(dir, ['quick', 'X', '--approve'], { env: { CLAUDECODE: '1' } });
   assert.notEqual(agent.code, 0);
   assert.match(agent.out, /human action/);
-  assert.ok(!fs.existsSync(path.join(dir, 'docs/rfc', `RFC-${K1}-x.md`)), 'nothing is written when refused');
-  assert.equal(hook(dir, { tool_name: 'Bash', tool_input: { command: 'node .rails/tool/bin/devrailsv2.js quick "x" --affects a --approve' } }).code, 2);
-  assert.equal(hook(dir, { tool_name: 'Bash', tool_input: { command: 'node .rails/tool/bin/devrailsv2.js quick "x" --affects a' } }).code, 0);
+  // without --approve an agent only drafts
+  const draft = cli(dir, ['quick', 'Y'], { env: { CLAUDECODE: '1' } });
+  assert.equal(draft.code, 0);
+  assert.match(read(dir, rfcPath(dir)), /^status: draft$/m);
+  assert.equal(hook(dir, { tool_name: 'Bash', tool_input: { command: 'node .rails/tool/bin/devrailsv2.js quick "x" --approve' } }).code, 2);
+  assert.equal(hook(dir, { tool_name: 'Bash', tool_input: { command: 'node .rails/tool/bin/devrailsv2.js quick "x"' } }).code, 0);
 
   const cfg = JSON.parse(read(dir, '.rails/config.json'));
   cfg.strictness = 'strict';
   write(dir, '.rails/config.json', JSON.stringify(cfg));
-  assert.match(cli(dir, ['quick', 'X', '--affects', 'a']).out, /disabled in strict mode/);
+  assert.match(cli(dir, ['quick', 'X']).out, /disabled in strict mode/);
+});
+
+test('micro fast-track: one commit with an automatic RFC prefix, no change record or tests; limits enforced', () => {
+  const dir = repoWithCode('micro');
+  cli(dir, ['quick', 'Change submit button color']);
+  approve(dir, K1); // what the human's "Approve it now? Y" writes (committed here by the helper)
+  git(dir, 'branch', 'base-main', 'HEAD~1');
+  assert.equal(cli(dir, ['rfc', 'start', '1']).code, 0);
+  write(dir, 'src/ui/Button.css', '.btn { padding: 4px; color: green; }\n');
+  write(dir, 'src/ui/logic.js', 'export const x = 2;\n');
+  git(dir, 'add', '-A');
+  const c = git(dir, 'commit', '-q', '-m', 'change submit button color');
+  assert.equal(c.code, 0, c.out);
+  assert.match(git(dir, 'log', '-1', '--format=%s').out, new RegExp(`^RFC-${K1}: change submit button color`), 'prefix added automatically');
+  const env = { GITHUB_ACTIONS: 'true', GITHUB_HEAD_REF: `rfc/${K1}-change-submit-button-color` };
+  const ci = cli(dir, ['check', '--ci', '--base', 'base-main'], { env });
+  assert.match(ci.out, /CHANGELOG\.md was not updated/, 'approve (not this test helper) writes the CHANGELOG line');
+  assert.doesNotMatch(ci.out, /change record/i);
+  assert.doesNotMatch(ci.out, /no tests changed/);
+  assert.doesNotMatch(ci.out, /affected_areas is empty/);
+
+  write(dir, 'src/ui/logic.js', Array.from({ length: 12 }, (_, i) => `export const v${i} = ${i};`).join('\n') + '\n');
+  git(dir, 'add', '-A');
+  const big = git(dir, 'commit', '-q', '-m', 'more');
+  assert.notEqual(big.code, 0);
+  assert.match(big.out, /Micro change is \d+ lines .* the limit is 10/);
+});
+
+test('new RFC ids skip ids used on other branches', () => {
+  const dir = repoWithCode('ids');
+  git(dir, 'checkout', '-q', '-b', 'rfc/elsewhere');
+  cli(dir, ['quick', 'First']);
+  git(dir, 'commit', '-q', '-m', `RFC-${K1}: draft`);
+  git(dir, 'checkout', '-q', 'main');
+  cli(dir, ['quick', 'Second']);
+  assert.ok(fs.readdirSync(path.join(dir, 'docs/rfc')).some((f) => f.startsWith(`RFC-${Y}-002-second`)));
 });
 
 test('fast-track gate: cosmetic-only passes without tests; logic or out-of-scope changes fail', () => {
@@ -197,4 +241,58 @@ test('audit shows the fast-track share and flags split work', () => {
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /fast-track: 3 \(100%\)/);
   assert.match(r.out, /Possible split work: RFC-\d{4}-001, RFC-\d{4}-002, RFC-\d{4}-003/);
+});
+
+test('documentation is always fast-track: any size, any number of files, no tests, no protected areas', () => {
+  const dir = repoWithCode('docs-ft');
+  cli(dir, ['quick', 'Rewrite the developer docs']);
+  approve(dir, K1);
+  git(dir, 'branch', 'base-main', 'HEAD~1');
+  cli(dir, ['rfc', 'start', '1']);
+  const big = Array.from({ length: 80 }, (_, i) => `Line ${i}`).join('\n') + '\n';
+  for (const f of ['README.md', 'docs/setup.md', 'docs/auth/login-flow.md', 'src/ui/README.md', 'notes/release-notes.txt', 'docs/api.rst']) write(dir, f, big);
+  git(dir, 'add', '-A');
+  const c = git(dir, 'commit', '-q', '-m', 'docs');
+  assert.equal(c.code, 0, c.out);
+  const ci = cli(dir, ['check', '--ci', '--base', 'base-main'], { env: { GITHUB_ACTIONS: 'true', GITHUB_HEAD_REF: `rfc/${K1}-rewrite-the-developer-docs` } });
+  assert.doesNotMatch(ci.out, /Micro change|protected areas|no tests changed/, ci.out);
+
+  // documentation plus a little code: only the code counts towards the micro limit
+  write(dir, 'src/ui/logic.js', 'export const x = 3;\n');
+  git(dir, 'add', '-A');
+  assert.equal(git(dir, 'commit', '-q', '-m', 'docs + tiny code').code, 0);
+
+  // doc-looking files that aren't docs still count
+  write(dir, 'requirements.txt', Array.from({ length: 12 }, (_, i) => `pkg${i}==1.0`).join('\n') + '\n');
+  git(dir, 'add', '-A');
+  const req = git(dir, 'commit', '-q', '-m', 'deps');
+  assert.notEqual(req.code, 0);
+  assert.match(req.out, /Micro change is \d+ lines/);
+});
+
+test('listed fast-track may name doc folders and ** for documentation', () => {
+  const dir = repoWithCode('docs-listed');
+  const r = cli(dir, ['quick', 'Docs refresh', '--affects', 'docs/**, src/**/*.md, README.md', ...full]);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(cli(dir, ['rfc', 'lint', K1]).code, 0);
+});
+
+test('.gitignore and .editorconfig need no RFC at all', () => {
+  const dir = repoWithCode('no-rfc');
+  git(dir, 'branch', 'base-main');
+  // no active RFC: the hook allows the edit, the commit needs no prefix, CI passes
+  assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: '.gitignore', content: 'dist/\n' } }).code, 0);
+  assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: 'src/ui/.gitignore', content: 'tmp/\n' } }).code, 0);
+  write(dir, '.gitignore', `${read(dir, '.gitignore')}dist/\ncoverage/\n`);
+  write(dir, '.editorconfig', 'root = true\n');
+  git(dir, 'add', '-A');
+  const c = git(dir, 'commit', '-q', '-m', 'ignore build output');
+  assert.equal(c.code, 0, c.out);
+  const ci = cli(dir, ['check', '--ci', '--base', 'base-main'], { env: { GITHUB_ACTIONS: 'true', GITHUB_HEAD_REF: 'chore/gitignore' } });
+  assert.equal(ci.code, 0, ci.out);
+  // mixed with code: the code still needs an RFC
+  write(dir, '.gitignore', `${read(dir, '.gitignore')}tmp/\n`);
+  write(dir, 'src/ui/logic.js', 'export const x = 9;\n');
+  git(dir, 'add', '-A');
+  assert.notEqual(git(dir, 'commit', '-q', '-m', 'mixed').code, 0);
 });

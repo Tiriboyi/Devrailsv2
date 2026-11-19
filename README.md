@@ -15,7 +15,7 @@ Instructions guide an agent; they don't stop it. devrailsv2 writes the instructi
 | Layer | What it blocks |
 |---|---|
 | **Claude Code hooks** (`.claude/settings.json`) | Edits (built-in tools and Serena's MCP edit tools) without an approved, active RFC; self-approval (`status`, `approved_by`, `approved_on`, `rfc approve`, approval label); editing an approved RFC; `--no-verify`; editing hooks, config or CI |
-| **Git hooks** (`.githooks/`) | Commits without an `RFC-NNNN:` prefix; staged code without an approved RFC |
+| **Git hooks** (`.githooks/`) | Commits without an `RFC-<yyyy>-<nnn>:` prefix; staged code without an approved RFC; fast-track changes over the limits |
 | **CI gate** (GitHub Actions / Azure Pipelines) | PRs without an approved RFC (approver verified), acceptance criteria without tests, code without tests, missing change record/CHANGELOG |
 
 GitHub Copilot has no equivalent of Claude Code's hooks, so for Copilot the git hooks and the CI gate (with branch protection) are the enforcement.
@@ -26,16 +26,18 @@ GitHub Copilot has no equivalent of Claude Code's hooks, so for Copilot the git 
 npx github:<you>/devrailsv2 init
 ```
 `init` asks:
-1. **New blank repo, existing repo, or migration** (e.g. Node.js → C#, with the old code's folder)
-2. Stack, strictness (light / **standard** / strict), test command
-3. **Ticket tracker and how to authenticate**: GitHub (gh CLI or token env var), Azure DevOps (az CLI or PAT env var), both, or none. Change it any time with `devrailsv2 auth`. Tokens are never stored, only the environment variable name.
-4. Who may approve RFCs (GitHub usernames and/or git emails)
+1. **Whole repository or one folder** (e.g. only `backend/` of a monorepo, see [Scoping](#scoping-only-part-of-a-repository-under-devrailsv2))
+2. **New blank repo, existing repo, or migration** (e.g. Node.js → C#, with the old code's folder)
+3. Stack, strictness (light / **standard** / strict), test command
+4. **Ticket tracker and how to authenticate**: GitHub (gh CLI or token env var), Azure DevOps (az CLI or PAT env var), both, or none. Change it any time with `devrailsv2 auth`. Tokens are never stored, only the environment variable name.
+5. Who may approve RFCs (GitHub usernames and/or git emails), and the default decision owner
+6. Whether to connect **Serena** (optional code intelligence)
 
-It then writes the scaffold, vendors itself into `.rails/tool/` (so hooks and CI need no install, including in .NET repos), enables the git hooks and creates `RFC-0000` covering the setup itself.
+It then writes the scaffold, vendors itself into `.rails/tool/` (so hooks and CI need no install, including in .NET repos), enables the git hooks and creates `RFC-<yyyy>-000` (already approved) covering the setup itself.
 
 Then:
 ```bash
-git add -A && git commit -m "RFC-0000: adopt devrailsv2"
+git add -A && git commit -m "RFC-2026-000: adopt devrailsv2"
 ```
 On GitHub: protect `main` (require pull requests and the **devrailsv2** status check) and create the `rfc-approved` label. On Azure Repos: add `azure-pipelines.devrailsv2.yml` as a build-validation policy.
 
@@ -53,6 +55,9 @@ On GitHub: protect `main` (require pull requests and the **devrailsv2** status c
 | Change record, CHANGELOG, STATUS | `devrailsv2 done --run-tests` → `/rails-done` |
 | Gate | `devrailsv2 check` |
 | Where are we? | `devrailsv2 status` → `/rails-status` |
+| Tiny change (≤ 10 lines) | `devrailsv2 quick "<what you change>"`, then commit and push (see [fast-track](#small-changes-fast-track)) |
+| Tokens per RFC / step | `devrailsv2 usage` |
+| Is fast-track being misused? | `devrailsv2 audit` |
 
 Inside a repo the CLI is always available as `node .rails/tool/bin/devrailsv2.js`.
 
@@ -64,9 +69,12 @@ AGENTS.md                         main instructions + house rules (managed block
 CLAUDE.md                         imports AGENTS.md (@AGENTS.md) + Claude specifics
 .github/copilot-instructions.md   points Copilot at AGENTS.md
 .github/prompts/rails-*.prompt.md Copilot prompt files
-.claude/commands/rails-*.md       Claude Code slash commands
+.claude/commands/rails-*.md       Claude Code slash commands (each with its model)
+.claude/agents/rails-*.md         helper subagents: explorer, test-runner, reviewer
+.github/agents/rails-*.agent.md   the same helpers for Copilot
+.github/ISSUE_TEMPLATE/           bug, feature and UI issue forms
 .claude/settings.json             PreToolUse + SessionStart hooks (merged into existing settings)
-.githooks/pre-commit, commit-msg
+.githooks/pre-commit, commit-msg, prepare-commit-msg (adds the RFC id to commit messages)
 .github/workflows/devrailsv2.yml  PR gate + tests
 .github/pull_request_template.md
 .rails/config.json                mode, stack, strictness, paths, tracker, approvers
@@ -102,15 +110,58 @@ devrailsv2 models off | on | reset
 - AGENTS.md tells the agent to delegate searching and test runs to the subagents. The devrailsv2 hooks apply to subagents too, and agents cannot edit the command or agent files.
 - Switching models mid-conversation loses the prompt cache. Subagents avoid this because each starts with a small, fresh context. A fresh session per RFC keeps costs down too.
 
-## Monorepos: only one part under devrailsv2
+## Scoping: only part of a repository under devrailsv2
+In a monorepo you may want the rails on one part, for example the backend, while the UI is worked on normally. `paths.scope` limits devrailsv2 to one or more folders.
+
+### New setup
 ```bash
-devrailsv2 init --scope backend        # or answer "no" to "Apply devrailsv2 to the whole repository?"
+devrailsv2 init --scope backend
 ```
-- Only files inside `paths.scope` (here `backend/`) are gated: Claude hook, Serena edits, pre-commit, commit message and CI. The UI can be changed freely, and UI-only commits need no `RFC-…:` prefix.
-- devrailsv2's own files stay at the repository root (`AGENTS.md`, `docs/rfc`, `.rails`, hooks, CI) and stay protected.
-- `init` detects the stack inside the scope folder and prefixes the paths (`backend/src/**`, `backend/tests/**`); the test command becomes `cd backend && dotnet test`.
-- A change touching both UI and backend needs an approved RFC for the backend part; the UI files in it are ignored by the checks and the change record.
-- Several folders: `"scope": ["backend", "shared"]` in `.rails/config.json`. Add the `src`/`tests` globs for each.
+Or answer **no** to *"Apply devrailsv2 to the whole repository?"* and name the folder. `init` then:
+- detects the stack **inside the scope folder** (a `backend/*.sln` makes it .NET even if `frontend/package.json` exists);
+- prefixes the paths: `backend/src/**`, `backend/tests/**`, `backend/**/*.Tests/**`;
+- sets the test command to run there: `cd backend && dotnet test`;
+- adds a line to AGENTS.md telling the agent the rules apply only to `backend/`.
+
+### Existing devrailsv2 repo
+Edit `.rails/config.json` (in an RFC of its own, since it's tooling), then refresh:
+```jsonc
+"testCommand": "cd backend && dotnet test",
+"paths": {
+  "scope": ["backend"],
+  "src":   ["backend/src/**"],
+  "tests": ["backend/tests/**", "backend/**/*.Tests/**"]
+}
+```
+```bash
+devrailsv2 update
+```
+
+### Several folders
+```jsonc
+"paths": {
+  "scope": ["backend", "shared/contracts"],
+  "src":   ["backend/src/**", "shared/contracts/src/**"],
+  "tests": ["backend/tests/**", "shared/contracts/tests/**"]
+}
+```
+A scope entry is a folder (everything below it counts) or a glob (`services/*-api`). If the folders use different test runners, make `testCommand` run them all, e.g. `cd backend && dotnet test && cd ../shared/contracts && npm test`, or point it at a script.
+
+### What is and isn't checked
+| | Inside the scope (`backend/`) | Outside (e.g. `frontend/`) |
+|---|---|---|
+| Claude Code and Serena edits | need an approved, active RFC | free |
+| Commit message | must start with `RFC-<yyyy>-<nnn>:` | no prefix needed if the commit only touches files outside the scope |
+| Pre-commit and CI gate | full checks (approval, tests, acceptance criteria, change record, fast-track limits) | ignored; listed as "not checked" |
+| Change record (`done`) | lists the files | left out |
+
+Always checked, wherever they are: devrailsv2's own files at the repository root (`AGENTS.md`, `CLAUDE.md`, `docs/rfc/`, `docs/changes/`, `.rails/`, `.githooks/`, `.claude/`, the CI workflow). They stay protected from agent edits.
+
+**A change that touches both** (a new endpoint plus the button that calls it) is one RFC. List only the backend files in `affected_areas`; the backend part is gated as usual and the UI part passes through. A pull request that only touches the UI passes CI with a "not checked" note.
+
+**Tips**
+- Open Claude Code at the **repository root**, where `.claude/settings.json` and `.mcp.json` live. Opened inside `backend/`, it may not load the root hooks.
+- Want the UI under devrailsv2 later? Add `"frontend"` to `scope` with its own `src`/`tests` paths. The RFCs, history and change records carry on.
 
 ## Measuring token usage
 ```bash
@@ -126,40 +177,129 @@ Reads Claude Code's own session logs on this machine (`~/.claude/projects/<repo>
 
 Costs are list-price estimates; set your own in `.rails/config.json` → `usage.prices` (`{"opus": {"input": 5, "output": 25}, …}`, USD per million tokens). GitHub Copilot doesn't expose token counts; see premium requests in your GitHub billing settings. For dashboards across repos, Claude Code can also export the `claude_code.token.usage` and `claude_code.cost.usage` metrics via OpenTelemetry (`CLAUDE_CODE_ENABLE_TELEMETRY=1`).
 
-## Small changes: `quick`
-A cosmetic fix shouldn't need a full RFC, but it should still be approved and recorded.
+## Small changes: fast-track
+A typo, a colour, a version bump: one command, make the change, commit, push. The change is still approved by you, limited in size and recorded, but there is no RFC to write and no separate approval commit.
+
+### The everyday case: tiny changes
 ```bash
-devrailsv2 quick "Fix save button padding on mobile" --affects src/ui/Button.module.css \
-  --request "Save button touches the screen edge on mobile" \
-  --outcome "12 px padding on viewports < 768 px" \
-  --verify "Checked at 375 px in Chrome and Safari; existing tests pass" --approve
-# make the change, then
-devrailsv2 done --run-tests && git push   # open the PR
+devrailsv2 quick "Change submit button color"      # same as: rfc new "…" --fast-track
+#   ✔ Fast-track RFC-2026-014 (micro: ≤ 10 lines, ≤ 3 files in total)
+#   Approve it now? [Y/n]  ⏎
+#   ✔ Created branch rfc/2026-014-change-submit-button-color
+# make the change
+git commit -am "change submit button color"         # becomes "RFC-2026-014: change submit button color"
+git push                                            # open the PR
 ```
-- Writes a **fast-track RFC in the full RFC format**. The sections that don't apply are pre-filled, so only Request, Desired Outcome and Verification Plan need writing; `rfc lint` checks only those three for fast-track.
-- `--approve` (a human, in a terminal) approves it, creates the `rfc/<id>-…` branch and commits the approval under your name in one step. Agents can run `quick` without `--approve`. The hook blocks the flag for them, and the RFC then waits for `rfc approve`.
-- **No tests for cosmetic files.** Changes that only touch `paths.cosmetic` (styles, images, icons, fonts, translations; editable in `.rails/config.json`) pass the gate without tests. Touch anything else and tests are required again, so logic can't slip in as "cosmetic".
-- No spec; acceptance criteria are optional; `done` writes a short change record.
-- Strict mode disables fast-track.
-- Batching: several small fixes can share one fast-track RFC if every file is in `affected_areas`.
-### Keeping fast-track honest
-Fast-track is only useful if it stays small, so the limits are enforced, not just suggested. They live in `.rails/config.json` → `fastTrack`.
+What happens behind the scenes:
+- A complete fast-track RFC is written in the normal RFC format, filled in from the title. Add `--request`, `--outcome` or `--verify` if you want more than the title.
+- You confirm with Enter, which records you as the approver (`approved_by`, `approved_on`, a Change History row). You are only asked when you run it yourself in a terminal; an agent can't approve.
+- The `rfc/…` branch is created (`--here` stays on the current branch), and the RFC and a CHANGELOG line are **staged**, so they go into the same commit as your change.
+- A git hook adds the `RFC-…:` prefix to your commit message.
+- No spec, no change record, no `done`.
+- **No tests needed** for a micro change, even when it touches a `.ts` or `.cs` file, because its size is capped.
 
-| Guard | Where it's enforced |
+**Micro limits:** the whole change, all files together, at most **10 changed lines** (added + removed, styles included) in at most **3 files**. Lockfiles and [documentation](#documentation-is-always-fast-track) don't count, so `next 16.4.5 → 16.4.6` in `package.json` is one line. Go over the limit and the commit is refused with a message telling you to add `--affects` or use a regular RFC.
+
+### Documentation is always fast-track
+Changes to documentation never count towards any fast-track limit: any number of lines, any number of files, anywhere in the repo, no tests, and no protected-area check (a guide about the auth flow is still just a guide). So a docs rewrite is simply:
+```bash
+devrailsv2 quick "Rewrite the setup guide"     # ⏎ to approve, edit, commit, push
+```
+In a mixed change, only the code lines count: 300 lines of Markdown plus a 4-line code fix is still a micro change.
+
+What counts as documentation (`paths.docs` in `.rails/config.json`): `*.md`, `*.mdx`, `*.markdown`, `*.rst`, `*.adoc`, `*.txt`, everything under `docs/`, `LICENSE*`, `NOTICE*`.
+
+What looks like documentation but isn't (`paths.docsExclude`), so it still counts:
+- **agent instructions**: `AGENTS.md`, `CLAUDE.md`, `.github/**` (Copilot instructions, prompts, workflows), `.claude/**`. They steer the agents, so a big change to them deserves a regular RFC;
+- **config that happens to be `.txt`**: `requirements*.txt`, `constraints*.txt`, `CMakeLists.txt`, `robots.txt`, `llms.txt`.
+
+Add your own exceptions to `docsExclude` (e.g. `"**/*.sql.txt"`) or more doc locations to `docs` (e.g. `"wiki/**"`).
+
+### Files that need no RFC at all
+Some housekeeping files can always be changed directly, without even a fast-track RFC: `.gitignore` and `.editorconfig`, in any folder. Edit, commit with any message, push; hooks and CI let them through. If the same commit also changes code, the code still needs its RFC.
+
+The list is `paths.noRfc` in `.rails/config.json`. Add files with the same character, e.g. `".prettierignore"`, `".dockerignore"` or `".vscode/extensions.json"`. `.gitattributes` is deliberately not on it: it controls line endings, and the git hooks rely on it.
+
+### Slightly larger: fast-track with a file list
+```bash
+devrailsv2 quick "Polish invoice page" --affects "src/ui/Invoice.tsx, src/ui/Invoice.module.css"
+```
+- Up to **200 changed lines** in up to **10 files**, which must be listed exactly. Styles, images and translations don't count towards the lines.
+- Edits outside the listed files are blocked.
+- Tests are required for anything that isn't cosmetic (styles, images, fonts, translations need none).
+- Approval, branch, commit prefix and CHANGELOG work exactly as above.
+
+### When to use which
+| Micro (`quick "…"`) | Listed fast-track (`quick "…" --affects …`) | Regular RFC (`rfc new`) |
+|---|---|---|
+| ≤ 10 lines, ≤ 3 files | ≤ 200 lines, ≤ 10 listed files | anything bigger |
+| colours, spacing, wording, typos, a patch-level version bump, a config value, **any documentation change** | a small UI polish, an icon set, a translation batch | new behaviour, business logic, anything you'd want reviewed against acceptance criteria |
+| | | **always** for auth, security, permissions, payments, billing, migrations, SQL, CI, infrastructure |
+
+### When an agent does it
+An agent may run `quick "…"`. It is treated as a draft: the agent can't approve, because the confirmation only appears in a human's terminal and the hook blocks `--approve` and `rfc approve` for agents. The RFC is staged and waits for you:
+```bash
+devrailsv2 rfc approve 2026-014     # stages the approval + CHANGELOG line; no separate commit
+devrailsv2 rfc start 2026-014
+```
+In Claude Code you can ask *"draft a fast-track RFC for the button colour"*, approve it, and then let the agent make the change.
+
+### Guards against misuse
+The limits are enforced, not suggested.
+
+| Guard | Default | Enforced by |
+|---|---|---|
+| A **human approves**; agents can't use `--approve` or `rfc approve` | — | Claude hook, interactive check, CI approver check |
+| `affected_areas` lists **exact files**: no `**`, no whole folders; a `*` inside one folder is fine (`src/ui/icons/*.svg`) | — | `quick`, `rfc lint`, `rfc approve`, gate |
+| **Micro size** (no file list): whole change ≤ 10 lines in ≤ 3 files, every line counted except lockfiles and documentation | `micro: { maxLines: 10, maxFiles: 3 }` | pre-commit, `check`, CI |
+| **File limit** (listed fast-track) | `maxFiles: 10` | `quick`, `rfc approve`, gate |
+| **Protected areas** never go fast-track (names matched case-insensitively) | `forbidden`: auth, identity, security, permissions, payments, billing, migrations, `*.sql`, CI, infrastructure, devrailsv2 tooling | `quick`, `rfc approve`, Claude hook, pre-commit, CI |
+| Edits stay **inside the listed files** (listed fast-track; tests and docs excepted), in every strictness mode | — | Claude hook (blocks the edit), pre-commit, CI |
+| **Size cap** (listed fast-track): added + removed lines, not counting styles, assets, docs and lockfiles | `maxLines: 200` | pre-commit (per commit), `check`, CI (whole PR) |
+| **One fast-track RFC per pull request**, so a big change can't be stacked from small ones | `onePerPullRequest: true` | CI |
+| The approved RFC is **frozen**, so scope can't grow afterwards | — | Claude hook, CI (compares with the approval commit) |
+| **Strict mode** turns fast-track off | — | `quick`, gate |
+
+### Watching how it's used
+```bash
+devrailsv2 audit              # last 90 days; --days 30
+```
+Shows the share of RFCs that are fast-track, each fast-track RFC's size and approver, and flags:
+- more than half of all RFCs being fast-track (`maxShare: 0.5`);
+- a fast-track change over the size or file limits, or touching protected areas;
+- **possible split work**: three or more fast-track RFCs on the same files within two weeks.
+
+Run it in a weekly scheduled job if several people use the repo.
+
+### Adjusting the limits
+All limits live in `.rails/config.json`:
+```jsonc
+"fastTrack": {
+  "maxFiles": 10,
+  "maxLines": 200,
+  "onePerPullRequest": true,
+  "maxShare": 0.5,
+  "micro": { "maxLines": 10, "maxFiles": 3 },
+  "forbidden": ["**/auth/**", "**/*auth*.*", "**/payment*/**", "**/migrations/**", "**/*.sql", ".github/workflows/**", "…"]
+},
+"paths": { "cosmetic": ["**/*.css", "**/*.scss", "**/*.svg", "**/*.png", "**/locales/**", "**/*.resx", "…"] }
+```
+The name matching is broad on purpose: `AuthorList.tsx` counts as "auth", and `billing/` may be a normal area in your project. Trim the list if it blocks too much. Change limits with a regular RFC; if a change hits a limit, the answer is a regular RFC, not a bigger limit.
+
+### Messages you may see
+| Message | Meaning / what to do |
 |---|---|
-| A **human approves** every fast-track RFC; agents can't (`--approve` and `rfc approve` are blocked for them) | Claude hook, interactive check, CI approver check |
-| `affected_areas` must list **exact files**: no `**`, no whole folders (a `*` inside one folder is fine), at most `maxFiles` (10) | `quick`, `rfc lint`, `rfc approve`, gate |
-| **Protected areas** never go fast-track: auth/identity/security/permissions, payments/billing, migrations and SQL, CI workflows, infrastructure (Terraform, Bicep, Docker), devrailsv2's own tooling (`fastTrack.forbidden`) | `quick`, `rfc approve`, Claude hook, pre-commit, CI |
-| Edits stay **inside the listed files** (tests and docs excepted), in every strictness mode | Claude hook (blocks the edit), pre-commit, CI |
-| **Size cap**: `maxLines` (200) added + removed lines, not counting styles, assets, docs and lockfiles | pre-commit (per commit), `check`, CI (whole PR) |
-| **Logic needs tests**: only cosmetic files (`paths.cosmetic`) may change without them | gate |
-| **One fast-track RFC per pull request** (`onePerPullRequest`), so a big change can't be stacked from small ones | CI |
-| The approved RFC is **frozen**, so scope can't grow afterwards | Claude hook, CI (compares with the approval commit) |
-| **Visibility**: `devrailsv2 audit [--days 90]` shows the fast-track share, the size of each fast-track RFC, protected files touched, and *possible split work* (several fast-track RFCs on the same files within two weeks) | on demand / in a scheduled job |
+| `Micro change is 14 lines … the limit is 10` | Add `--affects` with the files (a new `quick`), or use a regular RFC. |
+| `Micro change touches 4 files; the limit is 3` | Same. |
+| `affected_areas entry "src/**" uses **` | List the exact files. |
+| `"src/auth/…" is in a protected area` | Use `devrailsv2 rfc new` (regular RFC). |
+| `… is not listed in fast-track RFC-…` | The agent tried to edit another file. Add it (set the RFC back to draft and re-approve) or use a regular RFC. |
+| `Fast-track change is 340 lines … the limit is 200` | Too big for fast-track; use a regular RFC. |
+| `Source changed … but no tests changed` | A non-cosmetic file changed: add a test. |
+| `only one is allowed per pull request` | Combine the fast-track RFCs, or split the PR. |
+| `Fast-track changes are disabled in strict mode` | Strict repos always use regular RFCs. |
 
-If a change hits a limit, the answer is a regular RFC, not a bigger limit. Raise limits only per repository, with an RFC of its own.
-
-- Approving via the PR label alone doesn't help locally: the hooks need an approved RFC file before any edit. `--approve` is the quick local route.
+Approving with the PR label alone doesn't help locally: the hooks need an approved RFC file before any edit, so the confirmation in `quick` (or `rfc approve`) is the local route.
 
 ## The RFC format
 `docs/rfc/RFC-<yyyy>-<nnn>-<slug>.md`, numbered per year (`RFC-2026-001`, `RFC-2026-002`…). Any command accepts `RFC-2026-001`, `2026-001` or just `1`.
@@ -236,7 +376,7 @@ Note on the file route: agents commit with *your* git identity, so CI can't tell
 ## Strictness
 - **light:** approval enforced; tests, spec and docs only warn.
 - **standard:** approval, tests, acceptance-criteria coverage and change records enforced; fast-track RFCs allowed; scope only warns.
-- **strict:** no fast-track; edits outside the RFC's `Affects:` paths are blocked.
+- **strict:** as standard, plus a spec is required, fast-track is off, and edits outside the RFC's `affected_areas` are blocked.
 
 ## Distribution
 ### 1. Run straight from GitHub (no publishing)
@@ -276,7 +416,18 @@ npx github:<you>/devrailsv2@latest update     # or: node .rails/tool/bin/devrail
   "migration": { "from": "node", "to": "dotnet", "legacyPath": "legacy" },
   "strictness": "standard",
   "testCommand": "dotnet test",
-  "paths": { "src": ["src/**"], "tests": ["tests/**", "**/*.Tests/**"], "legacy": ["legacy/**"] },
+  "paths": {
+    "scope": ["backend"],                   // optional: only gate these folders (monorepos)
+    "src": ["backend/src/**"], "tests": ["backend/tests/**", "backend/**/*.Tests/**"], "legacy": ["legacy/**"],
+    "cosmetic": ["**/*.css", "**/*.svg", "**/locales/**"],  // never need tests
+    "docs": ["**/*.md", "**/*.txt", "docs/**", "…"],         // always fast-track, never count towards limits
+    "docsExclude": ["AGENTS.md", "CLAUDE.md", ".github/**", "**/requirements*.txt", "…"],
+    "noRfc": [".gitignore", "**/.gitignore", ".editorconfig", "**/.editorconfig"]   // never need an RFC
+  },
+  "fastTrack": { "maxFiles": 10, "maxLines": 200, "onePerPullRequest": true, "maxShare": 0.5, "forbidden": ["**/auth/**", "…"] },
+  "models": { "enabled": true, "claude": { "ticket": "opus", "implement": "sonnet", "explorer": "haiku" }, "copilot": {} },
+  "usage": { "prices": { "opus": { "input": 5, "output": 25 } } },
+  "serena": { "enabled": false },
   "tracker": {
     "provider": "both", "default": "github",
     "github": { "repo": "me/app", "auth": "gh-cli", "tokenEnv": "GITHUB_TOKEN" },

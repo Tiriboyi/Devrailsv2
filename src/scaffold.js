@@ -137,6 +137,7 @@ export function generate(root, cfg, { force = false, dryRun = false, initial = f
   }
   put('.githooks/pre-commit', T('githooks/pre-commit'), 'own', { exec: true });
   put('.githooks/commit-msg', T('githooks/commit-msg'), 'own', { exec: true });
+  put('.githooks/prepare-commit-msg', T('githooks/prepare-commit-msg'), 'own', { exec: true });
   put('.github/workflows/devrailsv2.yml', T('github/workflow.yml'), 'create');
   put('.github/pull_request_template.md', T('github/pull_request_template.md'), 'create');
   // Ticket formats that tell people (and agents) what a complete ticket contains

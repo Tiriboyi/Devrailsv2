@@ -1,0 +1,3 @@
+#!/bin/sh
+# devrailsv2: prefix the commit message with the active RFC id (RFC-2026-007: …) when it is missing.
+node .rails/tool/bin/devrailsv2.js check --prepare-msg "$1" --source "$2" || true

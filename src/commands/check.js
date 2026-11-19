@@ -1,6 +1,7 @@
+import fs from 'node:fs';
 import path from 'node:path';
-import { findRoot, read, gitLines, git, toPosix, log, c } from '../util.js';
-import { loadConfig, getActiveRfcId, inScope, scopeOf } from '../config.js';
+import { findRoot, read, gitLines, git, toPosix, matchAny, log, c } from '../util.js';
+import { loadConfig, getActiveRfcId, inScope, scopeOf, noRfcGlobs } from '../config.js';
 import { evaluate, changedFiles, ciContext, detectBase, rfcIdsFrom, commitMessageProblem } from '../gate.js';
 import { lineStats } from '../fasttrack.js';
 
@@ -17,8 +18,28 @@ export default async function check({ flags }) {
   const root = findRoot();
   const cfg = loadConfig(root);
 
+  if (flags['prepare-msg']) {
+    // prepare-commit-msg: put the active RFC id in front of the message, so `git commit -m "fix color"` just works.
+    const file = path.resolve(root, String(flags['prepare-msg']));
+    const source = flags.source && flags.source !== true ? String(flags.source) : '';
+    if (['merge', 'squash', 'commit'].includes(source)) return 0;
+    const active = getActiveRfcId(root);
+    if (!active || /^\d{4}-0+$/.test(active)) return 0;
+    const msg = read(file);
+    const first = msg.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '';
+    if (/^RFC-\d{4}-\d{3,4}\b/i.test(first) || /^(Merge|Revert|fixup!|squash!|amend!)/.test(first)) return 0;
+    if (scopeOf(cfg).length) {
+      const staged = gitLines(['diff', '--cached', '--name-only'], root).map(toPosix);
+      if (staged.length && !staged.some((f) => inScope(cfg, f))) return 0;
+    }
+    fs.writeFileSync(file, first ? msg.replace(first, `RFC-${active}: ${first}`) : `RFC-${active}: \n${msg}`);
+    return 0;
+  }
+
   if (flags['commit-msg']) {
     const file = path.resolve(root, String(flags['commit-msg']));
+    const stagedFiles = gitLines(['diff', '--cached', '--name-only'], root).map(toPosix);
+    if (stagedFiles.length && stagedFiles.every((f) => matchAny(f, noRfcGlobs(cfg)))) return 0; // e.g. a .gitignore-only commit
     if (scopeOf(cfg).length) {
       const staged = gitLines(['diff', '--cached', '--name-only'], root).map(toPosix);
       if (staged.length && !staged.some((f) => inScope(cfg, f))) return 0; // e.g. a UI-only commit

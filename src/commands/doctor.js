@@ -20,7 +20,7 @@ export default async function doctor() {
     if (hp === '.githooks') log.ok('Git hooks active (core.hooksPath = .githooks)');
     else fail(`Git hooks not active. Run: git config core.hooksPath .githooks`);
   }
-  for (const f of ['.githooks/pre-commit', '.githooks/commit-msg', '.rails/tool/bin/devrailsv2.js', 'AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/workflows/devrailsv2.yml', 'docs/STATUS.md', 'CHANGELOG.md']) {
+  for (const f of ['.githooks/pre-commit', '.githooks/commit-msg', '.githooks/prepare-commit-msg', '.rails/tool/bin/devrailsv2.js', 'AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/workflows/devrailsv2.yml', 'docs/STATUS.md', 'CHANGELOG.md']) {
     if (exists(path.join(root, f))) log.ok(f);
     else fail(`${f} is missing — run \`devrailsv2 update\`.`);
   }

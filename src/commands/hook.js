@@ -3,7 +3,7 @@
 //  SessionStart: stdout is added to Claude's context
 import path from 'node:path';
 import { findRoot, exists, read, toPosix, matchAny, matchAffects, CLI } from '../util.js';
-import { loadConfig, getActiveRfcId, FREE_PATHS, PROTECTED_PATHS, inScope } from '../config.js';
+import { loadConfig, getActiveRfcId, FREE_PATHS, freePaths, PROTECTED_PATHS, inScope, isDocFile } from '../config.js';
 import { getRfc, acCoverage, isSetupKey } from '../docs.js';
 import { splitFrontmatter } from '../frontmatter.js';
 import { isSerenaTool, classifySerenaTool, serenaToolName, serenaTargets } from '../serena.js';
@@ -85,7 +85,7 @@ function gatePath(root, cfg, rel) {
   if (matchAny(rel, PROTECTED_PATHS)) {
     return { block: `${rel} is devrailsv2 tooling/agent configuration and is protected. Ask the user to change it.` };
   }
-  if (matchAny(rel, FREE_PATHS)) return { allow: true };
+  if (matchAny(rel, freePaths(cfg))) return { allow: true };
   if (!inScope(cfg, rel)) return { allow: true }; // monorepo: outside paths.scope devrailsv2 does not apply
   const r = requireActiveRfc(root, rel);
   if (r.block) return r;
@@ -93,10 +93,10 @@ function gatePath(root, cfg, rel) {
   if (isSetupKey(rfc.key) && !matchAffects(rel, rfc.affects)) {
     return { block: `RFC-${rfc.key} only covers the devrailsv2 setup. Draft a new RFC for this change.` };
   }
-  if (rfc.type === 'fast-track' && !matchAffects(rel, rfc.affects) && !matchAny(rel, cfg.paths.tests) && !rel.startsWith('docs/') && rel !== 'CHANGELOG.md') {
+  if (rfc.type === 'fast-track' && rfc.affects.length && !matchAffects(rel, rfc.affects) && !matchAny(rel, cfg.paths.tests) && !rel.startsWith('docs/') && !isDocFile(cfg, rel) && rel !== 'CHANGELOG.md') {
     return { block: `${rel} is not listed in fast-track RFC-${rfc.key} (${rfc.affects.join(', ')}). Fast-track changes stay within the listed files; anything more needs a regular RFC.` };
   }
-  if (cfg.strictness === 'strict' && rfc.affects.length && !matchAffects(rel, rfc.affects) && !matchAny(rel, cfg.paths.tests) && !rel.startsWith('docs/') && rel !== 'CHANGELOG.md') {
+  if (cfg.strictness === 'strict' && rfc.affects.length && !matchAffects(rel, rfc.affects) && !matchAny(rel, cfg.paths.tests) && !rel.startsWith('docs/') && !isDocFile(cfg, rel) && rel !== 'CHANGELOG.md') {
     return { block: `${rel} is outside RFC-${rfc.key}'s affected_areas (${rfc.affects.join(', ')}). Set the RFC back to draft, update it and ask for re-approval.` };
   }
   return { allow: true };

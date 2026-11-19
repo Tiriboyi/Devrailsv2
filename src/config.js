@@ -7,6 +7,12 @@ export const STATE_PATH = '.rails/state.json';
 // Paths that may change without an approved RFC (drafting and decision documents).
 export const FREE_PATHS = ['docs/rfc/**', 'docs/specs/**', 'docs/analysis/**', 'docs/adr/**', '.rails/state.json', '.serena/memories/**'];
 
+/** Housekeeping files that never need an RFC (not even fast-track). Overridable via paths.noRfc. */
+export const DEFAULT_NO_RFC = ['.gitignore', '**/.gitignore', '.editorconfig', '**/.editorconfig'];
+export const noRfcGlobs = (cfg) => (Array.isArray(cfg?.paths?.noRfc) ? cfg.paths.noRfc : DEFAULT_NO_RFC);
+/** Paths that may change without any RFC: devrailsv2's own drafting documents plus the configured housekeeping files. */
+export const freePaths = (cfg) => [...FREE_PATHS, ...noRfcGlobs(cfg)];
+
 // Tooling the agent must not edit (hooks, gate, CI).
 export const PROTECTED_PATHS = [
   '.rails/config.json',
@@ -61,6 +67,7 @@ export const DEFAULT_FAST_TRACK = {
   maxLines: 200, // added + removed lines in non-cosmetic, non-doc files (lockfiles excluded)
   onePerPullRequest: true,
   maxShare: 0.5, // audit warns when more than half of the RFCs are fast-track
+  micro: { maxLines: 10, maxFiles: 3 }, // fast-track without a file list: the whole change must stay this small
   forbidden: [
     // matching is case-insensitive
     '**/auth/**', '**/*auth*.*', '**/identity/**', '**/security/**', '**/*security*.*', '**/permission*/**',
@@ -70,8 +77,22 @@ export const DEFAULT_FAST_TRACK = {
     '.rails/**', '.githooks/**', '.claude/**', '.mcp.json', '.serena/**',
   ],
 };
-export const fastTrackRules = (cfg) => ({ ...DEFAULT_FAST_TRACK, ...(cfg?.fastTrack || {}) });
+export const fastTrackRules = (cfg) => ({ ...DEFAULT_FAST_TRACK, ...(cfg?.fastTrack || {}), micro: { ...DEFAULT_FAST_TRACK.micro, ...(cfg?.fastTrack?.micro || {}) } });
 export const LOCKFILES = ['**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/packages.lock.json', '**/*.lock'];
+
+/** Documentation: always allowed through fast-track, whatever its size, and never needs tests. Overridable via paths.docs. */
+export const DEFAULT_DOCS = ['**/*.md', '**/*.mdx', '**/*.markdown', '**/*.rst', '**/*.adoc', '**/*.txt', 'docs/**', '**/LICENSE*', '**/NOTICE*'];
+/** Doc-looking files that are not documentation: agent instructions (they steer the agents) and config that happens to be .txt. */
+export const DEFAULT_DOCS_EXCLUDE = [
+  'AGENTS.md', '**/AGENTS.md', 'CLAUDE.md', '**/CLAUDE.md', '.github/**', '.claude/**', '.rails/**', '.serena/**', '.githooks/**',
+  '**/requirements*.txt', '**/constraints*.txt', '**/CMakeLists.txt', '**/robots.txt', '**/llms.txt',
+];
+export const docGlobs = (cfg) => (Array.isArray(cfg?.paths?.docs) ? cfg.paths.docs : DEFAULT_DOCS);
+export const docExcludeGlobs = (cfg) => (Array.isArray(cfg?.paths?.docsExclude) ? cfg.paths.docsExclude : DEFAULT_DOCS_EXCLUDE);
+export function isDocFile(cfg, file) {
+  const f = String(file).replace(/\\/g, '/');
+  return docGlobs(cfg).some((g) => globToRegex(g).test(f)) && !docExcludeGlobs(cfg).some((g) => globToRegex(g).test(f));
+}
 
 /** Monorepo support: when paths.scope is set (e.g. ["backend"]), devrailsv2 only gates files inside it. */
 export const scopeOf = (cfg) => (Array.isArray(cfg?.paths?.scope) ? cfg.paths.scope.filter(Boolean) : []);
