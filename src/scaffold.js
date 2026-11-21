@@ -7,7 +7,7 @@ import {
 import { STACKS } from './config.js';
 import { yamlScalar } from './frontmatter.js';
 import { claudeAgents, copilotAgents, commandFrontmatter, promptFrontmatter, modelsFor } from './models.js';
-import { codesliceEnabled, mergeMcpJson, mergeVscodeMcp, removeServers, removeSerena } from './codeslice.js';
+import { codesliceEnabled, mergeMcpJson, mergeVscodeMcp, removeServers } from './codeslice.js';
 
 const PROMPTS = [
   { name: 'ticket', description: 'Analyse a ticket and define fit criteria (no code changes)', hint: '<ticket id, e.g. gh:42 or ado:1234>' },
@@ -150,7 +150,6 @@ export function generate(root, cfg, { force = false, dryRun = false, initial = f
     actions.push(mergeMcpJson(root, { dryRun }));
     actions.push(mergeVscodeMcp(root, { dryRun }));
   } else actions.push(...removeServers(root, ['codeslice'], { dryRun }));
-  actions.push(...removeSerena(root, { dryRun })); // CodeSlice replaced Serena; clean up repos set up before
   put('.githooks/pre-commit', T('githooks/pre-commit'), 'own', { exec: true });
   put('.githooks/commit-msg', T('githooks/commit-msg'), 'own', { exec: true });
   put('.githooks/prepare-commit-msg', T('githooks/prepare-commit-msg'), 'own', { exec: true });
@@ -236,22 +235,14 @@ function mergeClaudeSettings(root, actions, dryRun, cfg) {
     if (idx < 0) list.push(entry);
     else list[idx] = entry;
   };
-  const removeAll = (marker) => {
-    for (const [event, list] of Object.entries(settings.hooks)) {
-      settings.hooks[event] = list.filter((e) => !JSON.stringify(e).includes(marker));
-      if (!settings.hooks[event].length) delete settings.hooks[event];
-    }
-  };
-  // devrailsv2's gate. It also matches Serena's MCP tools: a Serena connected outside the repo could edit files unchecked
+  // devrailsv2's gate
   upsert('PreToolUse', {
-    matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__.*serena.*',
+    matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash',
     hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.rails/tool/bin/devrailsv2.js" hook claude' }],
   }, 'devrailsv2.js');
   upsert('SessionStart', {
     hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.rails/tool/bin/devrailsv2.js" hook session-start' }],
   }, 'devrailsv2.js');
-  // Serena's own hooks, from before CodeSlice replaced it
-  removeAll('serena-hooks');
   const existed = exists(p);
   const changed = JSON.stringify(settings) !== before;
   if (changed && !dryRun) writeJson(p, settings);

@@ -14,7 +14,7 @@ Instructions guide an agent; they don't stop it. devrailsv2 writes the instructi
 
 | Layer | What it blocks |
 |---|---|
-| **Claude Code hooks** (`.claude/settings.json`) | Edits without an approved, active RFC (Serena's MCP edit tools are refused outright); self-approval (`status`, `approved_by`, `approved_on`, `rfc approve`, approval label); editing an approved RFC; `--no-verify`; editing hooks, config or CI |
+| **Claude Code hooks** (`.claude/settings.json`) | Edits without an approved, active RFC; self-approval (`status`, `approved_by`, `approved_on`, `rfc approve`, approval label); editing an approved RFC; `--no-verify`; editing hooks, config or CI |
 | **Git hooks** (`.githooks/`) | Commits without an `RFC-<yyyy>-<nnn>:` prefix; staged code without an approved RFC; fast-track changes over the limits |
 | **CI gate** (GitHub Actions / Azure Pipelines) | PRs without an approved RFC (approver verified), acceptance criteria without tests, code without tests, missing change record/CHANGELOG |
 
@@ -361,7 +361,6 @@ What `codeslice enable` sets up:
 | `find_symbol`, `get_type_overview`, `get_symbol_slice` | where code is, what a type contains, the source of one type or method |
 | `refresh_graph` | re-analysis after files are deleted or moved |
 
-**Serena.** devrailsv2 used to connect Serena. `devrailsv2 update` removes that setup: the `serena` MCP entries, `.serena/project.yml`, Serena's hooks and its config key. It keeps `.serena/memories/` for you to delete. A Serena still connected some other way (user scope, a plugin) cannot edit files: the hook matches `mcp__.*serena.*` and refuses every Serena tool that can write. Its read tools still work.
 
 ## Approval
 Approval can come from either the RFC file or a PR label (configurable in `.rails/config.json` → `approval.require`):

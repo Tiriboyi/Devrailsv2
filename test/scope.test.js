@@ -40,7 +40,6 @@ test('UI changes are free; backend changes need an approved RFC', () => {
   // Claude hook
   assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: 'frontend/src/App.tsx', content: 'x' } }).code, 0);
   assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: 'backend/src/Api/Program.cs', content: 'x' } }).code, 2);
-  assert.equal(hook(dir, { tool_name: 'mcp__serena__replace_symbol_body', tool_input: { relative_path: 'frontend/src/App.tsx', name_path: 'App', body: 'x' } }).code, 2, 'Serena edits are refused everywhere');
   assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: '.claude/settings.json', content: '{}' } }).code, 2, 'tooling stays protected');
 
   // git hooks: a UI-only commit needs no RFC prefix

@@ -6,7 +6,6 @@ import { findRoot, exists, read, toPosix, matchAny, matchAffects, CLI } from '..
 import { loadConfig, getActiveRfcId, FREE_PATHS, freePaths, PROTECTED_PATHS, inScope, isDocFile } from '../config.js';
 import { getRfc, acCoverage, isSetupKey } from '../docs.js';
 import { splitFrontmatter } from '../frontmatter.js';
-import { isSerenaTool, serenaToolName, serenaToolWrites } from '../codeslice.js';
 
 async function readStdin() {
   if (process.stdin.isTTY) return '';
@@ -112,18 +111,11 @@ function bashDecision(cfg, cmd) {
   return { allow: true };
 }
 
-/** Serena (replaced by CodeSlice) may still be connected outside the repo: its reads pass, anything that can write is refused. */
-function serenaDecision(tool) {
-  if (!serenaToolWrites(tool)) return { allow: true };
-  return { block: `Serena's ${serenaToolName(tool)} edits files outside devrailsv2's per-file checks. Use Edit/Write instead (same RFC rules); for code questions use the CodeSlice tools.` };
-}
-
 export function decide(root, cfg, input) {
   const tool = input.tool_name || '';
   const ti = input.tool_input || {};
 
   if (tool === 'Bash') return bashDecision(cfg, ti.command);
-  if (isSerenaTool(tool)) return serenaDecision(tool);
 
   const file = ti.file_path || ti.notebook_path;
   if (!file) return { allow: true };

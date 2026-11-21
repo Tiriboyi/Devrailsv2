@@ -16,4 +16,4 @@ This repository has CodeSlice connected as an MCP server. It analyzes the soluti
 - Dependencies are tracked per type, so naming a member gives the dependents of its whole type.
 - The graph refreshes by itself when `.cs`/`.csproj` files change. Call `refresh_graph` after deleting or moving files.
 
-CodeSlice only reads. Make edits with the normal editor tools; they need an approved, active RFC as usual. Serena is not used in this repository, and the devrailsv2 hook blocks its editing tools.
+CodeSlice only reads. Make edits with the normal editor tools; they need an approved, active RFC as usual.

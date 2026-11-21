@@ -53,9 +53,6 @@ export default async function doctor() {
     if (exists(path.join(root, '.codecanvas/architecture-graph.json'))) log.ok('.codecanvas/architecture-graph.json exists');
     else log.warn('No graph yet: the first CodeSlice call analyzes the solution (a minute or two on large ones).');
   }
-  if (mcp?.mcpServers?.serena || exists(path.join(root, '.serena/project.yml')) || JSON.stringify(settings?.hooks || {}).includes('serena-hooks')) {
-    fail('Serena is still set up here. devrailsv2 replaced it with CodeSlice — run `devrailsv2 update` to remove it.');
-  }
 
   console.log(c.bold('\nTracker'));
   if (!(await testAuth(cfg))) ok = false;

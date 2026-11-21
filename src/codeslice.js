@@ -1,5 +1,4 @@
-// CodeSlice (DevTools/CodeSliceMcp) integration: MCP config and clean-up of the Serena setup it replaces.
-import fs from 'node:fs';
+// CodeSlice (DevTools/CodeSliceMcp) integration: MCP config for Claude Code and Copilot.
 import path from 'node:path';
 import { exists, readJson, writeJson, run } from './util.js';
 
@@ -55,29 +54,3 @@ export function removeServers(root, names, { dryRun = false } = {}) {
   }
   return actions;
 }
-
-/**
- * Undo what the Serena integration set up: MCP entries and Serena's tool config.
- * Memories under .serena/memories/ are left for the user to keep or delete.
- */
-export function removeSerena(root, { dryRun = false } = {}) {
-  const actions = removeServers(root, ['serena'], { dryRun });
-  for (const rel of ['.serena/project.yml', '.serena/project.local.yml', '.serena/cache']) {
-    const p = path.join(root, rel);
-    if (!exists(p)) continue;
-    if (!dryRun) fs.rmSync(p, { recursive: true, force: true });
-    actions.push({ rel, act: 'removed (Serena is no longer used)' });
-  }
-  const memories = path.join(root, '.serena', 'memories');
-  if (exists(memories)) actions.push({ rel: '.serena/memories/', act: 'kept: delete it once you no longer need these notes' });
-  else if (!dryRun && exists(path.join(root, '.serena')) && !fs.readdirSync(path.join(root, '.serena')).length) fs.rmdirSync(path.join(root, '.serena'));
-  return actions;
-}
-
-// ---------- leftover Serena installs ----------
-// Serena may still be connected outside the repo (user scope or a plugin). Its editing tools bypass the per-file
-// checks devrailsv2 runs on Edit/Write, so the hook keeps matching them and blocks every one that can write.
-export const isSerenaTool = (name = '') => /^mcp__.*serena.*__/i.test(name);
-export const serenaToolName = (name = '') => name.replace(/^mcp__.*?__/, '').toLowerCase();
-const SERENA_WRITES = /(replace|insert|delete|create|rename|move|inline|write|edit|remove|execute|repl|onboarding)/;
-export const serenaToolWrites = (name) => SERENA_WRITES.test(serenaToolName(name));

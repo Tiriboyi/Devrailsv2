@@ -8,7 +8,6 @@ export default async function codeslice({ pos }) {
   const cfg = loadConfig(root);
   const sub = pos[0] || 'status';
   const version = codesliceInstalled();
-  delete cfg.serena; // replaced by CodeSlice
 
   if (sub === 'status') {
     const state = !codesliceSupported(cfg) ? c.dim(`not available for stack "${cfg.stack}" yet (C# only)`) : cfg.codeslice?.enabled ? c.green('enabled') : c.dim('disabled');
