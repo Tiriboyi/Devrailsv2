@@ -33,7 +33,6 @@ Micro (no `--affects`): at most 10 lines in 3 files, no tests or change record. 
 | Change record + CHANGELOG | — | — | fails the PR |
 | Scope stays inside `affected_areas` | blocks (strict) | — | warns / fails (strict) |
 | No `--no-verify`, no tooling edits | blocks it | — | branch protection |
-| Serena edit tools follow the same rules | blocks them like Edit/Write | blocks the commit | fails the PR |
 
 Instructions guide the agent; hooks and CI are what actually enforce. Protect `main` (require pull requests and the `devrailsv2` check) so nothing bypasses the gate.
 

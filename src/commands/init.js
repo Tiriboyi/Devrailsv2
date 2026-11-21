@@ -6,7 +6,7 @@ import {
 import { STACKS, normStack, saveConfig, saveState, loadConfig, DEFAULT_COSMETIC, DEFAULT_FAST_TRACK, prefixGlobs, DEFAULT_DOCS, DEFAULT_DOCS_EXCLUDE, DEFAULT_NO_RFC } from '../config.js';
 import { configureTracker, describeTracker, testAuth } from './auth.js';
 import { generate, printActions } from '../scaffold.js';
-import { serenaInstalled } from '../serena.js';
+import { codesliceInstalled, codesliceSupported, INSTALL_HINT } from '../codeslice.js';
 import { defaultModelsConfig } from '../models.js';
 
 function detectStack(root) {
@@ -103,15 +103,17 @@ export default async function init({ flags }) {
     (flags['decision-owner'] && flags['decision-owner'] !== true ? flags['decision-owner'] : '') ||
     (interactive ? await ask('Default decision owner for RFCs (name or role)', defOwner) : defOwner);
 
-  // 7. Serena (semantic code tools over MCP)
-  const serenaVersion = serenaInstalled();
-  let serena = false;
-  if (flags.serena !== undefined) serena = flags.serena !== 'false';
-  else if (flags['no-serena']) serena = false;
+  // 7. CodeSlice (code structure and change impact over MCP; C# only for now)
+  const supported = codesliceSupported({ stack, migration });
+  const codesliceVersion = supported ? codesliceInstalled() : null;
+  let codeslice = false;
+  if (!supported) codeslice = false;
+  else if (flags.codeslice !== undefined) codeslice = flags.codeslice !== 'false';
+  else if (flags['no-codeslice']) codeslice = false;
   else if (interactive) {
-    serena = await confirm(
-      `Connect Serena (symbol-level code tools for the agent)?${serenaVersion ? c.dim(` found ${serenaVersion}`) : c.dim(' not installed: uv tool install -p 3.13 serena-agent')}`,
-      !!serenaVersion,
+    codeslice = await confirm(
+      `Connect CodeSlice (code structure and change impact for the agent)?${codesliceVersion ? c.dim(` found ${codesliceVersion}`) : c.dim(` not installed: ${INSTALL_HINT}`)}`,
+      !!codesliceVersion,
     );
   }
 
@@ -146,7 +148,7 @@ export default async function init({ flags }) {
       decisionOwner,
     },
     setupRfc: `${new Date().getFullYear()}-000`,
-    serena: { enabled: serena, hooks: true },
+    codeslice: { enabled: codeslice },
     models: { ...defaultModelsConfig(), enabled: !flags['no-models'] },
     fastTrack: { ...DEFAULT_FAST_TRACK, forbidden: [...DEFAULT_FAST_TRACK.forbidden] },
     created: new Date().toISOString().slice(0, 10),
@@ -161,7 +163,7 @@ export default async function init({ flags }) {
   console.log(`  tracker     ${describeTracker(tracker)}`);
   console.log(`  approvers   ${approvers.join(', ') || c.yellow('none — approval author will not be verified in CI')}`);
   console.log(`  decision    default decision owner: ${decisionOwner || '(not set)'}`);
-  console.log(`  serena      ${serena ? `enabled${serenaVersion ? '' : c.yellow(' (not installed yet: uv tool install -p 3.13 serena-agent)')}` : 'off (enable later with `devrailsv2 serena enable`)'}`);
+  console.log(`  codeslice   ${codeslice ? `enabled${codesliceVersion ? '' : c.yellow(' (not installed yet, see README → CodeSlice)')}` : supported ? 'off (enable later with `devrailsv2 codeslice enable`)' : 'not available for this stack yet (C# only)'}`);
   console.log(`  approval    RFC file status or PR label "${cfg.approval.prLabel}" (require: ${cfg.approval.require})\n`);
 
   if (interactive && !(await confirm('Generate the files?', true))) {

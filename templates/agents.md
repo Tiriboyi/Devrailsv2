@@ -85,7 +85,7 @@ The RFC has YAML frontmatter followed by fixed sections. Keep the format exactly
 - Anything you are less than confident about.
 
 @@stackRules@@
-@@serenaRules@@
+@@codesliceRules@@
 @@migrationRules@@
 ## Deciding whether a solution fits the ticket
 Every analysis ends with **fit criteria**: checkable statements derived from the ticket.

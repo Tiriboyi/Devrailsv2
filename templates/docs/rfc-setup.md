@@ -9,7 +9,7 @@ approved_by: @@userYaml@@
 approved_on: @@date@@
 created: @@date@@
 updated: @@date@@
-affected_areas: [AGENTS.md, CLAUDE.md, CHANGELOG.md, .gitignore, .gitattributes, .rails/**, .github/**, .claude/**, .githooks/**, docs/**, azure-pipelines.devrailsv2.yml, .serena/**, .mcp.json, .vscode/mcp.json]
+affected_areas: [AGENTS.md, CLAUDE.md, CHANGELOG.md, .gitignore, .gitattributes, .rails/**, .github/**, .claude/**, .githooks/**, docs/**, azure-pipelines.devrailsv2.yml, .mcp.json, .vscode/mcp.json]
 test_exemption: tooling setup, no product behaviour change
 ---
 

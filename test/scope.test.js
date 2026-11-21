@@ -40,7 +40,7 @@ test('UI changes are free; backend changes need an approved RFC', () => {
   // Claude hook
   assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: 'frontend/src/App.tsx', content: 'x' } }).code, 0);
   assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: 'backend/src/Api/Program.cs', content: 'x' } }).code, 2);
-  assert.equal(hook(dir, { tool_name: 'mcp__serena__replace_symbol_body', tool_input: { relative_path: 'frontend/src/App.tsx', name_path: 'App', body: 'x' } }).code, 0);
+  assert.equal(hook(dir, { tool_name: 'mcp__serena__replace_symbol_body', tool_input: { relative_path: 'frontend/src/App.tsx', name_path: 'App', body: 'x' } }).code, 2, 'Serena edits are refused everywhere');
   assert.equal(hook(dir, { tool_name: 'Write', tool_input: { file_path: '.claude/settings.json', content: '{}' } }).code, 2, 'tooling stays protected');
 
   // git hooks: a UI-only commit needs no RFC prefix
@@ -78,4 +78,22 @@ test('a change across UI and backend is checked only on the backend part', () =>
   const r = cli(dir, ['check', '--base', 'base-main']);
   assert.equal(r.code, 0, r.out);
   assert.doesNotMatch(r.out, /outside the RFC's affected_areas: .*frontend/, 'UI files are not scope-checked');
+});
+
+test('CI installs Node dependencies in the scope folder (not only the root)', () => {
+  const dir = tmpDir('mono-node');
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'config', 'user.name', 'Test Dev');
+  git(dir, 'config', 'user.email', 'dev@example.com');
+  write(dir, 'src/backend/package.json', '{"scripts":{"test":"vitest run"}}');
+  write(dir, 'src/frontend/package.json', '{}');
+  assert.equal(cli(dir, ['init', '--yes', '--tracker', 'none', '--scope', 'src/backend']).code, 0);
+  const wf = read(dir, '.github/workflows/devrailsv2.yml');
+  assert.match(wf, /if: hashFiles\('src\/backend\/package\.json'\) != ''\n\s+working-directory: src\/backend\n\s+run: if \[ -f package-lock\.json \]; then npm ci; else npm install; fi/);
+  assert.match(wf, /run: cd src\/backend && npm test/);
+  assert.match(cli(dir, ['doctor']).out, /CI installs Node dependencies in src\/backend/);
+
+  // an old workflow (root install only) is flagged
+  write(dir, '.github/workflows/devrailsv2.yml', wf.replace(/      - name: Install Node dependencies[\s\S]*?fi\n/, "      - name: Install Node dependencies\n        if: hashFiles('package-lock.json') != ''\n        run: npm ci\n"));
+  assert.match(cli(dir, ['doctor']).out, /does not install Node dependencies in src\/backend/);
 });

@@ -14,7 +14,7 @@ Instructions guide an agent; they don't stop it. devrailsv2 writes the instructi
 
 | Layer | What it blocks |
 |---|---|
-| **Claude Code hooks** (`.claude/settings.json`) | Edits (built-in tools and Serena's MCP edit tools) without an approved, active RFC; self-approval (`status`, `approved_by`, `approved_on`, `rfc approve`, approval label); editing an approved RFC; `--no-verify`; editing hooks, config or CI |
+| **Claude Code hooks** (`.claude/settings.json`) | Edits without an approved, active RFC (Serena's MCP edit tools are refused outright); self-approval (`status`, `approved_by`, `approved_on`, `rfc approve`, approval label); editing an approved RFC; `--no-verify`; editing hooks, config or CI |
 | **Git hooks** (`.githooks/`) | Commits without an `RFC-<yyyy>-<nnn>:` prefix; staged code without an approved RFC; fast-track changes over the limits |
 | **CI gate** (GitHub Actions / Azure Pipelines) | PRs without an approved RFC (approver verified), acceptance criteria without tests, code without tests, missing change record/CHANGELOG |
 
@@ -31,7 +31,7 @@ npx github:<you>/devrailsv2 init
 3. Stack, strictness (light / **standard** / strict), test command
 4. **Ticket tracker and how to authenticate**: GitHub (gh CLI or token env var), Azure DevOps (az CLI or PAT env var), both, or none. Change it any time with `devrailsv2 auth`. Tokens are never stored, only the environment variable name.
 5. Who may approve RFCs (GitHub usernames and/or git emails), and the default decision owner
-6. Whether to connect **Serena** (optional code intelligence)
+6. Whether to connect **CodeSlice** (code structure and change impact; C# repos)
 
 It then writes the scaffold, vendors itself into `.rails/tool/` (so hooks and CI need no install, including in .NET repos), enables the git hooks and creates `RFC-<yyyy>-000` (already approved) covering the setup itself.
 
@@ -150,7 +150,7 @@ A scope entry is a folder (everything below it counts) or a glob (`services/*-ap
 ### What is and isn't checked
 | | Inside the scope (`backend/`) | Outside (e.g. `frontend/`) |
 |---|---|---|
-| Claude Code and Serena edits | need an approved, active RFC | free |
+| Claude Code edits | need an approved, active RFC | free |
 | Commit message | must start with `RFC-<yyyy>-<nnn>:` | no prefix needed if the commit only touches files outside the scope |
 | Pre-commit and CI gate | full checks (approval, tests, acceptance criteria, change record, fast-track limits) | ignored; listed as "not checked" |
 | Change record (`done`) | lists the files | left out |
@@ -335,31 +335,33 @@ A ticket is the agent's only view of what's wanted, so devrailsv2 helps on both 
 - **Readiness check.** `ticket <id>` and `ticket lint <id>` detect the ticket type (bug / feature / UI) and check the required parts: steps, expected and actual behaviour and environment for bugs; user story and acceptance criteria for features; page, current state, expected design, a screenshot or design link, viewports and acceptance criteria for UI. Missing parts become questions for the requester, and the agent is told not to guess.
 - **Screenshots.** Images in the ticket body, comments, the Azure DevOps fields and image attachments are downloaded (up to 12, 10 MB each) to `.rails/runtime/tickets/<id>/`, which is git-ignored (`--keep-assets` puts them in `docs/analysis/assets/` instead). The analysis lists the files, and the agent must open each one and describe what it shows before analysing. Your GitHub or Azure DevOps credentials are sent only to those hosts. Redirects are followed by hand, so a token never travels to another site.
 
-## Serena (optional code intelligence)
-[Serena](https://github.com/oraios/serena) gives agents symbol-level tools (find symbol, find references, diagnostics, symbol edits) through MCP. devrailsv2 connects it and gates it.
+## CodeSlice (code structure and change impact)
+CodeSlice is the MCP server in the DevTools repo (`CodeSliceMcp/`). It analyzes a .NET solution with Roslyn and works out structure and change impact itself, so the agent gets answers instead of reading many files to build them. Its tools only read; the agent still edits with `Edit`/`Write`, gated as usual. It covers C# for now. Node repos get it once the TypeScript analyzer writes the same graph.
 
 ```bash
-uv tool install -p 3.13 serena-agent && serena init     # once per machine
-devrailsv2 init --serena                                  # new repo, or:
-devrailsv2 serena enable                                  # existing devrailsv2 repo
+# once per machine, in the DevTools repo
+dotnet pack CodeSliceMcp -c Release && dotnet tool install -g CodeSliceMcp --add-source CodeSliceMcp/nupkg
+devrailsv2 init --codeslice      # new .NET repo, or:
+devrailsv2 codeslice enable      # existing devrailsv2 repo
 ```
 
-What `serena enable` sets up:
+What `codeslice enable` sets up:
 | File | Purpose |
 |---|---|
-| `.mcp.json` | Claude Code: `serena start-mcp-server --context=claude-code --project-from-cwd --agent-interface tools` |
-| `.vscode/mcp.json` | GitHub Copilot agent mode in VS Code: `--context=vscode --project ${workspaceFolder} --agent-interface tools` |
-| `.serena/project.yml` | language servers for your stack (TypeScript, C#, both for migrations), `agent_interface: tools`, `excluded_tools: [serena_repl, execute_shell_command, remove_project]`, an `initial_prompt` pointing at AGENTS.md |
-| `.claude/settings.json` | Serena's own `serena-hooks activate / remind / cleanup` (not `auto-approve`) |
-| `AGENTS.md` | rules: navigate with Serena, cite symbols as RFC evidence, derive `affected_areas` from references; memories are a cache, not the source of truth |
+| `.mcp.json` | Claude Code: `codeslice --root .` |
+| `.vscode/mcp.json` | GitHub Copilot agent mode in VS Code: `codeslice --root ${workspaceFolder}` |
+| `.claude/agents/rails-explorer.md`, `rails-reviewer.md` | the CodeSlice tools (`mcp__codeslice__*`) |
+| `AGENTS.md` | rules: call `analyze_change_impact` before proposing a change, take `affected_areas` and evidence from it, navigate with `find_symbol` / `get_type_overview` / `get_symbol_slice` |
+| `.gitignore` | `.codecanvas/`, where CodeSlice keeps the graph (re-analyzed when `.cs`/`.csproj` files change) |
 
-**How it's gated.** Serena edits files through its own MCP tools, which Claude's built-in `Edit`/`Write` checks never see. So the devrailsv2 hook matches `mcp__.*serena.*` too:
-- read tools (`find_symbol`, `find_referencing_symbols`, `get_diagnostics_for_file`, …) and memories: always allowed
-- `replace_symbol_body`, `insert_*_symbol`, `replace_content`, `safe_delete_symbol`: same rule as `Edit` on that file (approved, active RFC; scope in strict mode)
-- `rename_symbol`, `replace_in_files`: need an approved, active RFC; repo-wide `replace_in_files` and anything touching `docs/rfc/` or tooling is refused; CI checks the final scope
-- `serena_repl`, `remove_project`: blocked; `execute_shell_command`: same rules as Bash (and excluded in `project.yml`)
+| Tool | Answers |
+|---|---|
+| `analyze_change_impact(symbols[])` | dependents, affected projects, tests that reach the change, risks, a ready-to-paste `affected_areas` list, RFC evidence lines |
+| `get_blast_radius(symbol)` | every dependent by project, with dependency kinds; implementers and subclasses |
+| `find_symbol`, `get_type_overview`, `get_symbol_slice` | where code is, what a type contains, the source of one type or method |
+| `refresh_graph` | re-analysis after files are deleted or moved |
 
-**Why `--agent-interface tools` matters.** Serena 2.x defaults to a REPL interface where the agent gets a single `serena_repl` tool that runs Python. Edits made that way are invisible to any hook, so devrailsv2 always forces the one-tool-per-operation interface, both in the launch command and in `project.yml`. `devrailsv2 doctor` checks it.
+**Serena.** devrailsv2 used to connect Serena. `devrailsv2 update` removes that setup: the `serena` MCP entries, `.serena/project.yml`, Serena's hooks and its config key. It keeps `.serena/memories/` for you to delete. A Serena still connected some other way (user scope, a plugin) cannot edit files: the hook matches `mcp__.*serena.*` and refuses every Serena tool that can write. Its read tools still work.
 
 ## Approval
 Approval can come from either the RFC file or a PR label (configurable in `.rails/config.json` → `approval.require`):
@@ -427,7 +429,7 @@ npx github:<you>/devrailsv2@latest update     # or: node .rails/tool/bin/devrail
   "fastTrack": { "maxFiles": 10, "maxLines": 200, "onePerPullRequest": true, "maxShare": 0.5, "forbidden": ["**/auth/**", "…"] },
   "models": { "enabled": true, "claude": { "ticket": "opus", "implement": "sonnet", "explorer": "haiku" }, "copilot": {} },
   "usage": { "prices": { "opus": { "input": 5, "output": 25 } } },
-  "serena": { "enabled": false },
+  "codeslice": { "enabled": false },
   "tracker": {
     "provider": "both", "default": "github",
     "github": { "repo": "me/app", "auth": "gh-cli", "tokenEnv": "GITHUB_TOKEN" },
@@ -437,6 +439,23 @@ npx github:<you>/devrailsv2@latest update     # or: node .rails/tool/bin/devrail
 }
 ```
 GitHub Enterprise / Azure DevOps Server: set `tracker.github.apiUrl` / `tracker.azure.baseUrl`.
+
+## Troubleshooting
+### CI: `vitest: not found` (or `jest`, `tsc`, … not found)
+The test step ran without `node_modules`. Workflows generated before 1.1 install Node dependencies only at the repository root; in a monorepo or with `paths.scope` (e.g. `src/backend`) nothing gets installed. `devrailsv2 doctor` reports it. Newer versions generate this for every scope folder (or the folder `testCommand` `cd`s into):
+```yaml
+      - name: Install Node dependencies (src/backend)
+        if: hashFiles('src/backend/package.json') != ''
+        working-directory: src/backend
+        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Tests
+        run: cd src/backend && npm run test
+```
+`devrailsv2 update` doesn't rewrite an existing workflow (it's yours to customise), so edit `.github/workflows/devrailsv2.yml` by hand. It's protected tooling, so commit it under the setup RFC:
+```bash
+devrailsv2 rfc start 2026-000            # the setup RFC; no branch is created
+git commit -am "RFC-2026-000: install backend dependencies in CI"
+```
 
 ## Limits worth knowing
 - Hooks inspect tool calls; a determined agent could still write files through an unusual shell command. CI plus branch protection is the backstop that can't be bypassed locally.

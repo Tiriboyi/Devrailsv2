@@ -7,7 +7,7 @@ import {
 import { STACKS } from './config.js';
 import { yamlScalar } from './frontmatter.js';
 import { claudeAgents, copilotAgents, commandFrontmatter, promptFrontmatter, modelsFor } from './models.js';
-import { serenaClaudeHooks, mergeMcpJson, mergeVscodeMcp, ensureProjectYml } from './serena.js';
+import { codesliceEnabled, mergeMcpJson, mergeVscodeMcp, removeServers, removeSerena } from './codeslice.js';
 
 const PROMPTS = [
   { name: 'ticket', description: 'Analyse a ticket and define fit criteria (no code changes)', hint: '<ticket id, e.g. gh:42 or ado:1234>' },
@@ -18,14 +18,30 @@ const PROMPTS = [
   { name: 'status', description: 'Summarise where the project is and the next step', hint: '' },
 ];
 
+/** Folders whose dependencies CI must install: the scope folders, or the folder the test command cd's into, else the root. */
+export function installDirs(cfg) {
+  const scope = (cfg.paths?.scope || []).filter((d) => !/[*?]/.test(d));
+  const cds = [...String(cfg.testCommand || '').matchAll(/\bcd\s+("[^"]+"|'[^']+'|[^\s&;|]+)/g)].map((m) => m[1].replace(/^["']|["']$/g, ''));
+  const dirs = [...new Set([...scope, ...cds].map((d) => d.replace(/\\/g, '/').replace(/^\.\/|\/+$/g, '')).filter((d) => d && d !== '.' && !d.startsWith('..')))];
+  return dirs.length ? dirs : ['.'];
+}
+
 function ciTestSteps(cfg) {
   const stacks = new Set([cfg.stack]);
   if (cfg.migration?.from) stacks.add(cfg.migration.from);
   const steps = [];
   if (stacks.has('node')) {
-    steps.push(
-      "      - name: Install Node dependencies\n        if: hashFiles('package-lock.json') != ''\n        run: npm ci",
-    );
+    for (const dir of installDirs(cfg)) {
+      const pj = dir === '.' ? 'package.json' : `${dir}/package.json`;
+      steps.push(
+        [
+          `      - name: Install Node dependencies${dir === '.' ? '' : ` (${dir})`}`,
+          `        if: hashFiles('${pj}') != ''`,
+          ...(dir === '.' ? [] : [`        working-directory: ${dir}`]),
+          '        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi',
+        ].join('\n'),
+      );
+    }
   }
   if (stacks.has('dotnet')) {
     steps.push("      - uses: actions/setup-dotnet@v4\n        with:\n          dotnet-version: '10.0.x'");
@@ -75,7 +91,7 @@ export function buildVars(cfg) {
     scopeNote: (cfg.paths.scope || []).length
       ? `- **Scope:** devrailsv2 applies only to ${cfg.paths.scope.map((d) => `\`${d}/\``).join(', ')}. Files outside it (e.g. the UI) are not gated; work on them normally. A change touching both still needs an approved RFC for the in-scope part.`
       : '',
-    serenaRules: cfg.serena?.enabled ? render(read(path.join(TEMPLATES, 'stack', 'serena.md')), { cli: CLI }) : '',
+    codesliceRules: codesliceEnabled(cfg) ? render(read(path.join(TEMPLATES, 'stack', 'codeslice.md')), { cli: CLI }) : '',
     migrationRules: m ? render(read(path.join(TEMPLATES, 'stack', 'migration.md')), { from: m.from, to: m.to, legacyPath: m.legacyPath, cli: CLI }) : '',
   };
 }
@@ -130,11 +146,11 @@ export function generate(root, cfg, { force = false, dryRun = false, initial = f
 
   // Enforcement
   mergeClaudeSettings(root, actions, dryRun, cfg);
-  if (cfg.serena?.enabled) {
+  if (codesliceEnabled(cfg)) {
     actions.push(mergeMcpJson(root, { dryRun }));
     actions.push(mergeVscodeMcp(root, { dryRun }));
-    actions.push(ensureProjectYml(root, cfg, { dryRun }));
-  }
+  } else actions.push(...removeServers(root, ['codeslice'], { dryRun }));
+  actions.push(...removeSerena(root, { dryRun })); // CodeSlice replaced Serena; clean up repos set up before
   put('.githooks/pre-commit', T('githooks/pre-commit'), 'own', { exec: true });
   put('.githooks/commit-msg', T('githooks/commit-msg'), 'own', { exec: true });
   put('.githooks/prepare-commit-msg', T('githooks/prepare-commit-msg'), 'own', { exec: true });
@@ -170,7 +186,7 @@ export function generate(root, cfg, { force = false, dryRun = false, initial = f
   // .gitignore
   const gi = path.join(root, '.gitignore');
   const giText = exists(gi) ? read(gi) : '';
-  const want = ['.rails/state.json', '.rails/runtime/', ...(cfg.serena?.enabled ? ['.serena/cache/', '.serena/project.local.yml'] : [])];
+  const want = ['.rails/state.json', '.rails/runtime/', ...(codesliceEnabled(cfg) ? ['.codecanvas/'] : [])];
   const missing = want.filter((l) => !giText.split(/\r?\n/).includes(l));
   if (missing.length) {
     if (!dryRun) write(gi, giText.replace(/\s*$/, giText ? '\n\n' : '') + '# devrailsv2 (local state)\n' + missing.join('\n') + '\n');
@@ -226,7 +242,7 @@ function mergeClaudeSettings(root, actions, dryRun, cfg) {
       if (!settings.hooks[event].length) delete settings.hooks[event];
     }
   };
-  // devrailsv2's gate — also covers Serena's MCP tools, which edit files outside Claude's built-in tools
+  // devrailsv2's gate. It also matches Serena's MCP tools: a Serena connected outside the repo could edit files unchecked
   upsert('PreToolUse', {
     matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__.*serena.*',
     hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.rails/tool/bin/devrailsv2.js" hook claude' }],
@@ -234,10 +250,8 @@ function mergeClaudeSettings(root, actions, dryRun, cfg) {
   upsert('SessionStart', {
     hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.rails/tool/bin/devrailsv2.js" hook session-start' }],
   }, 'devrailsv2.js');
-  // Serena's own hooks (not auto-approve: approvals stay with Claude Code's permission settings)
-  if (cfg.serena?.enabled && cfg.serena.hooks !== false) {
-    for (const [event, entry] of Object.entries(serenaClaudeHooks())) upsert(event, entry, 'serena-hooks');
-  } else removeAll('serena-hooks');
+  // Serena's own hooks, from before CodeSlice replaced it
+  removeAll('serena-hooks');
   const existed = exists(p);
   const changed = JSON.stringify(settings) !== before;
   if (changed && !dryRun) writeJson(p, settings);

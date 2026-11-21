@@ -5,7 +5,7 @@ export const CONFIG_PATH = '.rails/config.json';
 export const STATE_PATH = '.rails/state.json';
 
 // Paths that may change without an approved RFC (drafting and decision documents).
-export const FREE_PATHS = ['docs/rfc/**', 'docs/specs/**', 'docs/analysis/**', 'docs/adr/**', '.rails/state.json', '.serena/memories/**'];
+export const FREE_PATHS = ['docs/rfc/**', 'docs/specs/**', 'docs/analysis/**', 'docs/adr/**', '.rails/state.json'];
 
 /** Housekeeping files that never need an RFC (not even fast-track). Overridable via paths.noRfc. */
 export const DEFAULT_NO_RFC = ['.gitignore', '**/.gitignore', '.editorconfig', '**/.editorconfig'];
@@ -23,8 +23,6 @@ export const PROTECTED_PATHS = [
   'azure-pipelines.devrailsv2.yml',
   '.mcp.json',
   '.vscode/mcp.json',
-  '.serena/project.yml',
-  '.serena/project.local.yml',
   '.claude/agents/rails-*.md',
   '.claude/commands/rails-*.md',
   '.github/agents/rails-*.agent.md',
@@ -74,7 +72,7 @@ export const DEFAULT_FAST_TRACK = {
     '**/payment*/**', '**/*payment*.*', '**/billing/**',
     '**/migrations/**', '**/Migrations/**', '**/*.sql',
     '.github/workflows/**', 'azure-pipelines*.yml', '**/*.tf', '**/*.bicep', '**/Dockerfile', '**/docker-compose*.yml', 'infra/**', 'deploy/**',
-    '.rails/**', '.githooks/**', '.claude/**', '.mcp.json', '.serena/**',
+    '.rails/**', '.githooks/**', '.claude/**', '.mcp.json', '.vscode/mcp.json',
   ],
 };
 export const fastTrackRules = (cfg) => ({ ...DEFAULT_FAST_TRACK, ...(cfg?.fastTrack || {}), micro: { ...DEFAULT_FAST_TRACK.micro, ...(cfg?.fastTrack?.micro || {}) } });
@@ -84,7 +82,7 @@ export const LOCKFILES = ['**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.
 export const DEFAULT_DOCS = ['**/*.md', '**/*.mdx', '**/*.markdown', '**/*.rst', '**/*.adoc', '**/*.txt', 'docs/**', '**/LICENSE*', '**/NOTICE*'];
 /** Doc-looking files that are not documentation: agent instructions (they steer the agents) and config that happens to be .txt. */
 export const DEFAULT_DOCS_EXCLUDE = [
-  'AGENTS.md', '**/AGENTS.md', 'CLAUDE.md', '**/CLAUDE.md', '.github/**', '.claude/**', '.rails/**', '.serena/**', '.githooks/**',
+  'AGENTS.md', '**/AGENTS.md', 'CLAUDE.md', '**/CLAUDE.md', '.github/**', '.claude/**', '.rails/**', '.githooks/**',
   '**/requirements*.txt', '**/constraints*.txt', '**/CMakeLists.txt', '**/robots.txt', '**/llms.txt',
 ];
 export const docGlobs = (cfg) => (Array.isArray(cfg?.paths?.docs) ? cfg.paths.docs : DEFAULT_DOCS);

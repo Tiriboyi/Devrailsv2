@@ -2,7 +2,7 @@ import { readJson, closePrompts, PKG_ROOT, c } from './util.js';
 import path from 'node:path';
 
 const BOOL = new Set([
-  'yes', 'force', 'dry-run', 'fast-track', 'fasttrack', 'here', 'approve', 'no-models', 'no-serena', 'keep-assets', 'no-images', 'azure', 'run-tests', 'staged', 'ci', 'json', 'branch', 'help', 'version', 'no-git', 'no-branch', 'quiet',
+  'yes', 'force', 'dry-run', 'fast-track', 'fasttrack', 'here', 'approve', 'no-models', 'no-codeslice', 'keep-assets', 'no-images', 'azure', 'run-tests', 'staged', 'ci', 'json', 'branch', 'help', 'version', 'no-git', 'no-branch', 'quiet',
 ]);
 
 export function parseArgs(argv) {
@@ -34,10 +34,10 @@ ${c.bold('Setup')}
                             [--scope backend] only gate one folder of a monorepo
   auth [test]               Choose/change how tickets are fetched (GitHub / Azure DevOps)
   update                    Refresh tooling, hooks, prompts and managed instruction blocks
-  doctor                    Check that hooks, tooling, auth and Serena are in place
+  doctor                    Check that hooks, tooling, auth and CodeSlice are in place
   models [set|on|off|reset] Which model runs each step (Claude Code commands/subagents, Copilot prompts)
-  serena enable|disable     Connect Serena (MCP code intelligence) for Claude Code and Copilot
-  serena status             Show the Serena setup and how its tools are gated
+  codeslice enable|disable  Connect CodeSlice (code structure and change impact over MCP; C# repos)
+  codeslice status          Show the CodeSlice setup
 
 ${c.bold('Workflow')}
   ticket <id>               Fetch a ticket + screenshots into docs/analysis/ (gh:123, ado:456, or 123)
@@ -89,7 +89,7 @@ export async function main(argv) {
     auth: () => import('./commands/auth.js'),
     update: () => import('./commands/update.js'),
     doctor: () => import('./commands/doctor.js'),
-    serena: () => import('./commands/serena.js'),
+    codeslice: () => import('./commands/codeslice.js'),
     models: () => import('./commands/models.js'),
     audit: () => import('./commands/audit.js'),
     usage: () => import('./commands/usage.js'),

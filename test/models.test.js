@@ -15,7 +15,7 @@ test('init routes each step to a model and writes the helper subagents', () => {
   assert.match(explorer, /^name: rails-explorer$/m);
   assert.match(explorer, /^model: haiku$/m);
   assert.match(explorer, /^disallowedTools: Edit, Write, MultiEdit, NotebookEdit, Bash$/m);
-  assert.doesNotMatch(explorer, /mcp__serena__/, 'no Serena tools when Serena is off');
+  assert.doesNotMatch(explorer, /mcp__codeslice__/, 'no CodeSlice tools when CodeSlice is off');
   assert.match(read(dir, '.claude/agents/rails-test-runner.md'), /^model: haiku$/m);
   assert.match(read(dir, '.claude/agents/rails-reviewer.md'), /^model: opus$/m);
   assert.match(read(dir, '.claude/agents/rails-test-runner.md'), /npm test/);
@@ -24,8 +24,8 @@ test('init routes each step to a model and writes the helper subagents', () => {
 });
 
 test('models set / off / on / reset regenerate commands, agents and AGENTS.md', () => {
-  const dir = initRepo('models-set', ['--serena']);
-  assert.match(read(dir, '.claude/agents/rails-explorer.md'), /mcp__serena__find_referencing_symbols/);
+  const dir = initRepo('models-set', ['--stack', 'dotnet', '--codeslice']);
+  assert.match(read(dir, '.claude/agents/rails-explorer.md'), /mcp__codeslice__get_blast_radius/);
 
   assert.equal(cli(dir, ['models', 'set', 'implement', 'haiku']).code, 0);
   assert.equal(fmModel(read(dir, '.claude/commands/rails-implement.md')), 'haiku');

@@ -2,7 +2,8 @@ import path from 'node:path';
 import { findRoot, exists, read, readJson, git, isGitRepo, log, c } from '../util.js';
 import { loadConfig } from '../config.js';
 import { testAuth } from './auth.js';
-import { serenaInstalled } from '../serena.js';
+import { codesliceInstalled, codesliceEnabled, INSTALL_HINT } from '../codeslice.js';
+import { installDirs } from '../scaffold.js';
 
 export default async function doctor() {
   const root = findRoot();
@@ -24,28 +25,36 @@ export default async function doctor() {
     if (exists(path.join(root, f))) log.ok(f);
     else fail(`${f} is missing — run \`devrailsv2 update\`.`);
   }
+  const wf = path.join(root, '.github/workflows/devrailsv2.yml');
+  if (exists(wf) && (cfg.stack === 'node' || cfg.migration?.from === 'node')) {
+    const text = read(wf);
+    for (const dir of installDirs(cfg)) {
+      const installs = /npm (ci|install)/.test(text);
+      const ok = installs && (dir === '.' || text.includes(`working-directory: ${dir}`) || text.includes(`cd ${dir} && npm ci`) || text.includes(`cd ${dir} && npm install`));
+      if (ok) log.ok(`CI installs Node dependencies in ${dir}`);
+      else fail(`.github/workflows/devrailsv2.yml does not install Node dependencies in ${dir}, so tests there fail in CI (e.g. "vitest: not found"). See README → Troubleshooting.`);
+    }
+  }
   const settings = readJson(path.join(root, '.claude/settings.json'), {});
   if (JSON.stringify(settings?.hooks || {}).includes('devrailsv2.js hook claude')) log.ok('Claude Code hooks configured');
   else fail('Claude Code hooks missing from .claude/settings.json — run `devrailsv2 update`.');
   if (!(cfg.approval.approvers || []).length) log.warn('approval.approvers is empty: CI cannot verify who approved an RFC.');
 
-  if (cfg.serena?.enabled) {
-    console.log(c.bold('\nSerena'));
-    const v = serenaInstalled();
-    if (v) log.ok(`Serena installed (${v})`);
-    else fail('Serena is enabled but not installed: uv tool install -p 3.13 serena-agent');
-    const mcp = readJson(path.join(root, '.mcp.json'), {});
-    if (mcp?.mcpServers?.serena && JSON.stringify(mcp.mcpServers.serena.args || []).includes('"tools"')) log.ok('.mcp.json registers serena for Claude Code (tools interface)');
-    else fail('.mcp.json has no serena server — run `devrailsv2 serena enable`.');
-    if (readJson(path.join(root, '.vscode/mcp.json'), {})?.servers?.serena) log.ok('.vscode/mcp.json registers serena for Copilot');
-    else fail('.vscode/mcp.json has no serena server — run `devrailsv2 serena enable`.');
-    const py = path.join(root, '.serena/project.yml');
-    if (!exists(py)) fail('.serena/project.yml missing — run `devrailsv2 serena enable`.');
-    else if (!/^agent_interface:\s*tools\s*$/m.test(read(py))) fail('.serena/project.yml must set agent_interface: tools (the REPL interface bypasses the devrailsv2 hook) — run `devrailsv2 update`.');
-    else if (!/^excluded_tools:.*serena_repl/m.test(read(py))) fail('.serena/project.yml does not exclude serena_repl / execute_shell_command — run `devrailsv2 update`.');
-    else log.ok('.serena/project.yml has the devrailsv2 settings');
-    if (JSON.stringify(settings?.hooks?.PreToolUse || []).includes('mcp__.*serena')) log.ok('devrailsv2 hook covers Serena tools');
-    else fail('The devrailsv2 PreToolUse hook does not cover Serena tools — run `devrailsv2 update`.');
+  const mcp = readJson(path.join(root, '.mcp.json'), {});
+  if (codesliceEnabled(cfg)) {
+    console.log(c.bold('\nCodeSlice'));
+    const v = codesliceInstalled();
+    if (v) log.ok(`CodeSlice installed (${v})`);
+    else fail(`CodeSlice is enabled but not installed: ${INSTALL_HINT}`);
+    if (mcp?.mcpServers?.codeslice) log.ok('.mcp.json registers codeslice for Claude Code');
+    else fail('.mcp.json has no codeslice server — run `devrailsv2 codeslice enable`.');
+    if (readJson(path.join(root, '.vscode/mcp.json'), {})?.servers?.codeslice) log.ok('.vscode/mcp.json registers codeslice for Copilot');
+    else fail('.vscode/mcp.json has no codeslice server — run `devrailsv2 codeslice enable`.');
+    if (exists(path.join(root, '.codecanvas/architecture-graph.json'))) log.ok('.codecanvas/architecture-graph.json exists');
+    else log.warn('No graph yet: the first CodeSlice call analyzes the solution (a minute or two on large ones).');
+  }
+  if (mcp?.mcpServers?.serena || exists(path.join(root, '.serena/project.yml')) || JSON.stringify(settings?.hooks || {}).includes('serena-hooks')) {
+    fail('Serena is still set up here. devrailsv2 replaced it with CodeSlice — run `devrailsv2 update` to remove it.');
   }
 
   console.log(c.bold('\nTracker'));

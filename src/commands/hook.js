@@ -6,7 +6,7 @@ import { findRoot, exists, read, toPosix, matchAny, matchAffects, CLI } from '..
 import { loadConfig, getActiveRfcId, FREE_PATHS, freePaths, PROTECTED_PATHS, inScope, isDocFile } from '../config.js';
 import { getRfc, acCoverage, isSetupKey } from '../docs.js';
 import { splitFrontmatter } from '../frontmatter.js';
-import { isSerenaTool, classifySerenaTool, serenaToolName, serenaTargets } from '../serena.js';
+import { isSerenaTool, serenaToolName, serenaToolWrites } from '../codeslice.js';
 
 async function readStdin() {
   if (process.stdin.isTTY) return '';
@@ -112,46 +112,10 @@ function bashDecision(cfg, cmd) {
   return { allow: true };
 }
 
-/** Serena MCP tools: reads pass; edits go through the same RFC gate as the built-in tools. */
-function serenaDecision(root, cfg, tool, ti) {
-  const kind = classifySerenaTool(tool);
-  const name = serenaToolName(tool);
-  if (kind === 'read' || kind === 'memory') return { allow: true };
-  if (kind === 'blocked') return { block: `Serena's ${name} is disabled by devrailsv2 (it can change files or configuration without review).` };
-  if (kind === 'shell') return bashDecision(cfg, ti.command);
-
-  const targets = serenaTargets(ti).map((t) => toRel(root, t));
-  if (targets.some((t) => t === null)) return { block: `Serena's ${name} points outside the repository.` };
-  const containsProtected = (rel) => PROTECTED_PATHS.some((g) => g.replace(/\/\*\*$/, '').startsWith(`${rel}/`));
-  for (const rel of targets) {
-    if (rel.startsWith('docs/rfc') || 'docs/rfc/'.startsWith(`${rel}/`)) return { block: `Edit RFCs with the normal editor tools, not Serena's ${name}, so approval fields can be checked.` };
-    if (rel !== '.' && (matchAny(rel, PROTECTED_PATHS) || containsProtected(rel))) {
-      return { block: `${rel} is devrailsv2 tooling/agent configuration and is protected. Ask the user to change it.` };
-    }
-  }
-
-  if (kind === 'file-edit') {
-    if (!targets.length) return { block: `Serena's ${name} was called without relative_path.` };
-    for (const rel of targets) {
-      const d = gatePath(root, cfg, rel);
-      if (d.block) return d;
-    }
-    return { allow: true };
-  }
-
-  // multi-file edits (rename, move, replace_in_files, unknown edit tools)
-  if (name === 'replace_in_files' && (!targets.length || targets[0] === '.')) {
-    return { block: 'replace_in_files across the whole repository could touch RFCs and tooling. Pass relative_path for the folder to change (e.g. src/billing).' };
-  }
-  if (targets.length && targets.every((t) => t !== '.' && !inScope(cfg, t))) return { allow: true };
-  const r = requireActiveRfc(root, `code (via Serena's ${name})`);
-  if (r.block) return r;
-  if (isSetupKey(r.rfc.key)) return { block: `RFC-${r.rfc.key} only covers the devrailsv2 setup. Draft a new RFC for this change.` };
-  for (const rel of targets) {
-    const d = gatePath(root, cfg, rel);
-    if (d.block) return d;
-  }
-  return { allow: true, note: `${name} may change files that reference the symbol; CI checks the final scope.` };
+/** Serena (replaced by CodeSlice) may still be connected outside the repo: its reads pass, anything that can write is refused. */
+function serenaDecision(tool) {
+  if (!serenaToolWrites(tool)) return { allow: true };
+  return { block: `Serena's ${serenaToolName(tool)} edits files outside devrailsv2's per-file checks. Use Edit/Write instead (same RFC rules); for code questions use the CodeSlice tools.` };
 }
 
 export function decide(root, cfg, input) {
@@ -159,7 +123,7 @@ export function decide(root, cfg, input) {
   const ti = input.tool_input || {};
 
   if (tool === 'Bash') return bashDecision(cfg, ti.command);
-  if (isSerenaTool(tool)) return serenaDecision(root, cfg, tool, ti);
+  if (isSerenaTool(tool)) return serenaDecision(tool);
 
   const file = ti.file_path || ti.notebook_path;
   if (!file) return { allow: true };

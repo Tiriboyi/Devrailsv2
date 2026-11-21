@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 export const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'devrailsv2.js');
 
 const baseEnv = () => {
-  const env = { ...process.env, NO_COLOR: '1', DEVRAILS_NO_SERENA_CLI: '1', GIT_AUTHOR_NAME: 'Test Dev', GIT_AUTHOR_EMAIL: 'dev@example.com', GIT_COMMITTER_NAME: 'Test Dev', GIT_COMMITTER_EMAIL: 'dev@example.com' };
+  const env = { ...process.env, NO_COLOR: '1', DEVRAILS_NO_CODESLICE_CLI: '1', GIT_AUTHOR_NAME: 'Test Dev', GIT_AUTHOR_EMAIL: 'dev@example.com', GIT_COMMITTER_NAME: 'Test Dev', GIT_COMMITTER_EMAIL: 'dev@example.com' };
   for (const k of ['CLAUDECODE', 'CI', 'GITHUB_ACTIONS', 'GITHUB_BASE_REF', 'GITHUB_HEAD_REF', 'GITHUB_EVENT_PATH', 'TF_BUILD']) delete env[k];
   return env;
 };
